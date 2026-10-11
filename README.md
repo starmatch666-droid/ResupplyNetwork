@@ -70,6 +70,9 @@ orbits, so planet packs need no configuration.
 * If a rule's cadence is longer than the vessel's endurance, the resource can run
   out before the next flight. The mod logs a warning when it detects this from the
   observed consumption rate.
+* Resources inside **cargo containers** (KSP 1.12 inventory parts) are deliberately
+  not seen or filled. The service works on the vessel's actual tanks; counting
+  stowed inventory as live capacity would be misleading.
 
 ## License
 
@@ -111,6 +114,11 @@ MIT
 确认下单。`定时补给规则…` 打开班期设置窗口。
 
 所有系数都在 `GameData/ResupplyNetwork/Config/ResupplySettings.cfg`，随时可调。
+
+## 已知边界
+
+* 装在**货舱**（KSP 1.12 的物品栏部件）里的资源容器不参与补给，也不计入余量——
+  这是有意为之。服务针对的是舰上真实的储罐，把收纳起来的货物当作可用容量会误导人。
 
 ## 授权
 
