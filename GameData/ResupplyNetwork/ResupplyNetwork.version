@@ -1,0 +1,13 @@
+{
+	"NAME": "Resupply Network",
+	"URL": "https://raw.githubusercontent.com/starmatch666-droid/ResupplyNetwork/main/GameData/ResupplyNetwork/ResupplyNetwork.version",
+	"DOWNLOAD": "https://github.com/starmatch666-droid/ResupplyNetwork/releases",
+	"GITHUB": {
+		"username": "starmatch666-droid",
+		"repository": "ResupplyNetwork",
+		"allow_prerelease": false
+	},
+	"VERSION": { "MAJOR": 1, "MINOR": 0, "PATCH": 0, "BUILD": 0 },
+	"KSP_VERSION": { "MAJOR": 1, "MINOR": 12, "PATCH": 5 },
+	"KSP_VERSION_MIN": { "MAJOR": 1, "MINOR": 12, "PATCH": 0 }
+}

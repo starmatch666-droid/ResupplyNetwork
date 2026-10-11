@@ -1,0 +1,9 @@
+bin/
+obj/
+build/
+work_*.txt
+*.user
+*.suo
+.vs/
+GameData/ResupplyNetwork/Plugins/*.dll
+GameData/ResupplyNetwork/Plugins/*.pdb
