@@ -1,78 +1,120 @@
 # Resupply Network
 
-Pay funds and wait for deliveries. Resupply any of your vessels - stations, ships,
+Pay funds and wait for delivery. Resupply any of your vessels - stations, ships,
 landers, probes - with **any** resource, without flying a tanker there yourself.
 Think commercial resupply flights to a station.
 
 ## What it does
 
-* **On-demand orders** - pick a vessel, pick resources, add them to a cart, see the
-  price and the lead time, order. One order can carry many resources at once.
-* **Scheduled resupply** - a rule checks a resource every N days and only sends a
-  flight when the level has dropped below a threshold, topping it back up to a
-  target level. A real resupply cadence.
-* **Costs come from real orbital data** - freight scales with the delta-v needed to
-  get there and the transfer time, estimated from each body's orbit. Works with any
-  planet pack; there is no hardcoded body list.
-* **Any resource** - prices and densities are read from the game's own
-  `PartResourceDefinition` data, so modded resources (CommunityResourcePack, Far
-  Future Technologies, CryoEngines, USI, KerbalAtomics, ...) work automatically.
-* **Scarcity multipliers and an exclusion list** for resources you do not want to
-  sell (abstract resources, atmospheric intakes, ...).
-* **Difficulty settings page** - every coefficient is a slider in the game's
-  difficulty options, with a live reference quote showing what a full 2.5 m tank
-  costs and how long it takes, so you can see the effect while you drag.
-* **Localized resource names** - resources are shown in your game's language.
-* **Amount slider** - choose how much to inject as a percentage, or type an exact number.
-* **Rush orders** - pay a premium to cut the lead time, for when you cannot wait.
-* **Search and sort** - filter a large resource list by name and sort by free capacity or price.
-* **Bulk top-up** - one button adds every resource below the threshold to the cart.
-* **Rule scope** - a single scheduled rule can cover this vessel, all vessels of the
-  same type, or everything on the same body.
-* **Localized UI** - English and Chinese are both included.
-* **CommNet requirement** - optionally refuse to resupply a vessel with no working
-  comms link (on by default).
-* **Remembers window layout** between sessions.
+- **On-demand orders** - pick a vessel, add resources to a cart, see the combined
+  price and lead time, order. One order can carry many resources at once.
+- **Scheduled resupply** - a rule checks a resource every N days and only sends a
+  flight when the level has dropped below a threshold, topping it up to a target.
+  A rule can cover one vessel, every vessel of the same type, or everything on the
+  same body.
+- **Costs come from real orbital data** - freight scales with the delta-v needed to
+  reach the destination and the transfer time, estimated from each body's orbit.
+  Works with any planet pack; there is no hardcoded body list.
+- **Any resource** - prices and densities are read from the game's own
+  `PartResourceDefinition` data, so modded resources work automatically.
+- **Rush orders** - pay a multiplier to cut the lead time.
+- **Scarcity multipliers and an exclusion list** for resources you do not want to sell.
+- **English and Chinese UI** - everything follows your game language.
 
 ## Requirements
 
-* Kerbal Space Program 1.12.x
-* [ToolbarController](https://spacedock.info/mod/1931) - the toolbar button is
+- Kerbal Space Program 1.12.x
+- [ToolbarController](https://spacedock.info/mod/1931) - the toolbar button is
   registered through it, so it is a hard dependency.
 
 ## Install
 
-Drop the `ResupplyNetwork` folder into `GameData`, or install via CKAN.
+Unzip the `GameData` folder into your KSP install, or install via CKAN.
 
 ## Using it
 
-Open the window from the toolbar button (or `Ctrl+Alt+N`).
+Open the window from the toolbar button, or with `Ctrl+Alt+N`. It has four sections,
+and the dividers between them can be dragged to give any section more or less room -
+the total always fits the window. The button at the bottom closes it.
 
-1. Pick the target vessel. Filter by celestial body or vessel type if the list is long.
-2. Pick a resource, set an amount, click Add to Cart. Repeat for other resources.
-3. Review the combined quote and place the order.
+1. **Target vessel** - filter by celestial body or vessel type.
+2. **Resource** - search by name, sort by name / free capacity / price, pick an
+   amount with the slider or type an exact number. `Add all below N%` fills the cart
+   with everything currently under the threshold.
+3. **Cart** - the combined quote, the rush toggle, and the order button.
+4. **Pending** - orders in flight, with a detail view and cancel (partial refund).
 
-The "定时补给规则" (scheduled resupply rules) button opens the cadence window:
-threshold %, top-up %, cadence in days, and a per-order budget cap.
+Scheduled rules live behind the `Scheduled rules...` button.
 
-## Configuration
+## How the pricing works
 
-`GameData/ResupplyNetwork/Config/ResupplySettings.cfg` holds every coefficient:
-base freight rate, time markup, trips per order, service fee, scarcity multipliers,
-the exclusion list, and per-body overrides. Unlisted bodies are estimated from their
-orbits, so planet packs need no configuration.
+```
+material = sum(amount x unitCost)          # the game's own resource prices
+freight  = mass x rate                     # rate depends on where it is going
+service  = trips x per-trip fee            # trips = ceil(mass / cargo per trip)
+total    = max(material + freight + service, minimum order)
+lead     = base handling time + trips x transfer time
+
+rate = base rate x (1 + dv / dv_ref) x (1 + time markup x years) x premium
+```
+
+Every coefficient is adjustable (see below). The defaults are anchored so the
+service is never cheaper than launching the fuel yourself: the base rate equals the
+cost of lifting one tonne to LKO, and the transfer time is a real Hohmann estimate
+from the target's orbit.
+
+As a reference, at default settings, filling a 2.5 m Jumbo-64 at 250 km costs about
+**132,700 funds** and takes about **2.3 Kerbin days**. The same line is shown live on
+the difficulty page so you can see what a change does before you commit to it.
+
+## Difficulty options
+
+Three sections under the game's difficulty options:
+
+- **Resupply · Pricing** - freight rates, time markup, premium, cargo per trip,
+  service fee, minimum order, handling time, plus the live reference quote.
+- **Resupply · Refunds & Rush** - cancellation refund, refund when the target vessel
+  is lost, rush cost/time multipliers, and the CommNet link requirement.
+- **Resupply · Scheduling** - default threshold, top-up target, cadence and per-order
+  budget for new rules.
+
+The `Config/ResupplySettings.cfg` file holds the same values as *defaults* (used for
+new saves and by the offline pricing tool) plus the list-shaped settings that do not
+fit on that page: scarcity multipliers, the exclusion list, and per-body overrides.
+Values saved in the difficulty options take priority over the file.
+
+## Compatibility
+
+Prices and densities come from the game's own resource definitions, so any mod that
+defines resources the standard way works without configuration. Verified against
+200+ resources in a heavily modded 1.12.5 install: stock, CommunityResourcePack,
+Far Future Technologies, CryoEngines/CryoTanks, USI/MKS, Near Future, KerbalAtomics,
+plus OPM, MPE and Kcalbeloh as destinations.
+
+Excluded by default, because they are bookkeeping or environmental rather than
+something you can buy: `Megajoules`, `ChargedParticles`, `VacuumPlasma`,
+`ExoticMatter`, `WasteHeat`, `ThermalPower`, `KDVolume`, `IntakeAir`, `IntakeAtm`,
+`IntakeLqd`, `FanIntakeAir`, `SolarWind`.
+
+Scarcity multipliers are applied on top of the game's prices. Antimatter and
+anti-hydrogen are the interesting case: CRP already prices both at exactly 100,000
+funds per gram, and a x20 multiplier makes that 2,000,000 funds per gram.
 
 ## Notes and limits
 
-* Delivery is abstract - no physical tanker is spawned. The pricing is built so the
+- Delivery is abstract - no physical tanker is spawned. The pricing is built so the
   service never becomes cheaper than launching the fuel yourself.
-* An order is charged when placed; cancelling refunds a configurable fraction.
-* If a rule's cadence is longer than the vessel's endurance, the resource can run
-  out before the next flight. The mod logs a warning when it detects this from the
-  observed consumption rate.
-* Resources inside **cargo containers** (KSP 1.12 inventory parts) are deliberately
+- Orders are charged when placed; cancelling refunds a configurable fraction.
+- The docking-port requirement was **dropped by design**: checking ports on unloaded
+  vessels would mean depending on save-file snapshot fields (`state`, `dockUId`),
+  which is fragile. An optional CommNet link requirement is available instead.
+- Resources inside **cargo containers** (KSP 1.12 inventory parts) are deliberately
   not seen or filled. The service works on the vessel's actual tanks; counting
   stowed inventory as live capacity would be misleading.
+- Crew, science data and stored parts are not moved.
+- If a rule's cadence is longer than the vessel's endurance, the resource can run out
+  before the next flight. The mod logs a warning when it detects this from the
+  observed consumption rate.
 
 ## License
 
@@ -87,38 +129,85 @@ MIT
 
 ## 功能
 
-* **按需下单** - 选航天器、选资源、加入清单，看报价与交付时间，下单；一笔订单可含多种物资
-* **定时补给** - 每 N 天检查一次余量，低于阈值才发船，补到补充目标，模拟真实的补给班期
-* **成本由真实轨道数据算出** - 运费随目的地 Δv 与转移时间变化，自动适配任意行星包，不硬编码天体
-* **支持全部资源** - 直接从游戏自身的 `PartResourceDefinition` 读价格与密度，mod 资源自动生效
-* **稀缺溢价与排除表** - 抽象/环境类资源可排除；反物质、核燃料之类可设溢价
-* **难度设置页** - 所有系数都是游戏难度选项里的滑块，并实时显示"加满一个 2.5m 油罐要多少钱、多久"作为参考
-* **资源名本地化** - 按游戏语言显示资源名
-* **数量滑块** - 按百分比选取注入量，也可以直接输入精确值
-* **加急订单** - 多付钱缩短交付时间
-* **搜索与排序** - 资源多时按名称搜索，按可注入量或单价排序
-* **一键补满** - 把低于阈值的资源一次性加进清单
-* **规则作用域** - 一条定时规则可以覆盖当前舰船、同类型全部舰船，或同一天体上的全部舰船
-* **界面双语** - 内置英文与简体中文
-* **通信链路要求** - 可要求目标必须有可用通信链路（默认开启）
-* **记住窗口位置与尺寸**
+- **按需下单** - 选航天器、把资源加进清单，看合计报价与交付时间；一笔订单可含多种物资
+- **定时补给** - 每 N 天检查一次余量，低于阈值才发船，补到目标水位。规则可作用于单艘舰船、
+  同类型全部舰船，或同一天体上的全部舰船
+- **成本由真实轨道数据算出** - 运费随目的地 Δv 与转移时间变化，自动适配任意行星包
+- **支持全部资源** - 直接从游戏自身的 `PartResourceDefinition` 读价格与密度，mod 资源自动生效
+- **加急订单 / 稀缺溢价 / 排除表**
+- **界面双语**，跟着游戏语言走
 
 ## 依赖
 
-* KSP 1.12.x
-* **ToolbarController**（硬依赖，工具栏按钮通过它注册）
+- KSP 1.12.x
+- **ToolbarController**（硬依赖，工具栏按钮通过它注册）
 
 ## 使用
 
-工具栏按钮打开窗口（也可用 `Ctrl+Alt+N`）。选航天器 → 选资源 → 填数量 → 加入清单 →
-确认下单。`定时补给规则…` 打开班期设置窗口。
+工具栏按钮或 `Ctrl+Alt+N` 打开窗口。窗口分四段，段间的分隔条可以拖动调整高度，
+总和始终不超出窗口；底部有「关闭」按钮。
 
-所有系数都在 `GameData/ResupplyNetwork/Config/ResupplySettings.cfg`，随时可调。
+1. **目标航天器** - 可按天体或舰船类型筛选
+2. **资源** - 按名称搜索、按名称/可注入量/单价排序、滑块或精确输入取数量；
+   「把低于 N% 的全部加入清单」一键填充
+3. **清单** - 合计报价、加急开关、下单按钮
+4. **待交付** - 在途订单，可看明细、可取消（按比例退款）
+
+定时补给规则在「定时补给规则…」按钮里。
+
+## 定价方式
+
+```
+物资 = Σ 数量 × unitCost            游戏自身的资源价格
+运费 = 质量 × 费率                  费率取决于目的地
+服务 = 趟数 × 每趟服务费             趟数 = ceil(质量 / 单船运力)
+总价 = max(物资 + 运费 + 服务, 最低订单额)
+时长 = 调度基础时间 + 趟数 × 转移时间
+
+费率 = 基础运费 × (1 + Δv/Δv参照) × (1 + 时间加价 × 年数) × 便利溢价
+```
+
+默认值刻意锚定在"**不比你自己发射更便宜**"：基础运费等于把 1 吨送上 LKO 的成本，
+转移时间是按目标轨道算出来的真实霍曼转移。
+
+参考：默认参数下，在 250 km 轨道加满一个 2.5m 最大油罐（Jumbo-64）约
+**132,700 资金 / 2.3 坎巴拉日**。这一行会实时显示在难度页上，拖滑块就能看到影响。
+
+## 难度设置页
+
+三个独立条目：
+
+- **补给网 · 定价** - 运费率、时间加价、便利溢价、单船运力、服务费、最低订单额、调度时间
+  + 实时参考报价
+- **补给网 · 退款与加急** - 取消退款、舰船损毁退款、加急费用/时间倍率、通信链路要求
+- **补给网 · 定时补给** - 新规则的默认阈值、补充目标、班期、单笔预算
+
+`Config/ResupplySettings.cfg` 里存的是同名参数的**默认值**（新存档用，离线定价工具也读它），
+外加放不进那个页面的列表类配置：稀缺溢价、排除表、目的地覆盖。**难度页里的值优先于文件。**
+
+## 兼容性
+
+价格与密度取自游戏自身的资源定义，任何用标准方式定义资源的 mod 都自动生效。
+在一个重度 mod 化的 1.12.5 环境里实测覆盖 200+ 种资源：原版、CommunityResourcePack、
+Far Future Technologies、CryoEngines/CryoTanks、USI/MKS、Near Future、KerbalAtomics，
+目的地支持 OPM / MPE / Kcalbeloh。
+
+默认排除（属于记账或环境资源，不是"能买到的货"）：`Megajoules`、`ChargedParticles`、
+`VacuumPlasma`、`ExoticMatter`、`WasteHeat`、`ThermalPower`、`KDVolume`、
+`IntakeAir`、`IntakeAtm`、`IntakeLqd`、`FanIntakeAir`、`SolarWind`。
+
+稀缺溢价叠加在游戏原价上。反物质与反氢是个典型：CRP 原本就把两者都定在
+**10 万资金/克**，×20 后是 **200 万资金/克**。
 
 ## 已知边界
 
-* 装在**货舱**（KSP 1.12 的物品栏部件）里的资源容器不参与补给，也不计入余量——
-  这是有意为之。服务针对的是舰上真实的储罐，把收纳起来的货物当作可用容量会误导人。
+- 交付是抽象的，不生成实体补给船；定价保证不比你自己发射便宜
+- 下单即扣款，取消按可配置比例退款
+- **对接口要求已按设计取消**（检查未加载舰船的对接口要依赖存档快照字段，太脆弱），
+  改用可选的通信链路要求
+- **货舱**（KSP 1.12 物品栏部件）里的资源容器不参与补给，也不计入余量
+- 不搬运船员、科学数据、货物零件
+- 班期比续航还长时可能在到货前断货，检测到会往日志写警告
 
 ## 授权
 
