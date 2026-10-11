@@ -34,21 +34,29 @@ namespace ResupplyNetwork
     }
 
     /// <summary>
-    /// 定时补给规则：每 Interval 秒检查一次，余量低于 Threshold（容量比例）时
-    /// 自动下单补到 Target（容量比例）。模拟现实里按班期给空间站打补给飞船。
+    /// 定时补给规则。规则可以只作用于一艘舰船，也可以作用于同类型的全部舰船，
+    /// 或同一个天体上的全部舰船。
     /// </summary>
     public sealed class AutoRule
     {
-        public Guid VesselId;
-        public string VesselName;
+        public const int ScopeVessel = 0;
+        public const int ScopeVesselType = 1;
+        public const int ScopeBody = 2;
+
+        public Guid VesselId;          // ScopeVessel 时的目标
+        public string VesselName;      // 展示用
+        public int ScopeKind = ScopeVessel;
+        public VesselType ScopeType;   // ScopeVesselType 时用
+        public string ScopeBodyName;   // ScopeBody 时用
+
         public string Resource;
         public double Threshold = 0.3;
         public double Target = 1.0;
         public double Interval = 30.0 * 21600.0;
-        public double Budget = 50000.0;   // 单笔资金上限，<=0 表示不限
+        public double Budget = 50000.0;
         public double LastCheckUT;
-        public bool Checked;              // 是否已经检查过一次（不能用 LastCheckUT==0 代替）
-        public double PrevLevel = -1.0;   // 上次检查时的存量，用于估算消耗速率
+        public bool Checked;
+        public double PrevLevel = -1.0;
         public bool Enabled = true;
 
         public int IntervalDays { get { return (int)Math.Round(Interval / 21600.0); } }
@@ -99,6 +107,9 @@ namespace ResupplyNetwork
                 ConfigNode c = node.AddNode("RULE");
                 c.AddValue("vesselId", r.VesselId.ToString());
                 c.AddValue("vesselName", r.VesselName ?? string.Empty);
+                c.AddValue("scope", r.ScopeKind.ToString());
+                c.AddValue("scopeType", r.ScopeType.ToString());
+                c.AddValue("scopeBody", r.ScopeBodyName ?? string.Empty);
                 c.AddValue("resource", r.Resource ?? string.Empty);
                 c.AddValue("threshold", r.Threshold.ToString("R"));
                 c.AddValue("target", r.Target.ToString("R"));
@@ -120,7 +131,7 @@ namespace ResupplyNetwork
                 Pending.Add(d);
             }
             if (Pending.Count > 0)
-                Debug.Log("[ResupplyNetwork] 读档恢复了 " + Pending.Count + " 笔待交付订单");
+                Debug.Log("[ResupplyNetwork] restored " + Pending.Count + " pending orders");
 
             AutoRules.Clear();
             foreach (var c in node.GetNodes("RULE"))
@@ -130,20 +141,23 @@ namespace ResupplyNetwork
                 AutoRules.Add(r);
             }
             if (AutoRules.Count > 0)
-                Debug.Log("[ResupplyNetwork] 读档恢复了 " + AutoRules.Count + " 条定时补给规则");
+                Debug.Log("[ResupplyNetwork] restored " + AutoRules.Count + " scheduled rules");
         }
 
         private static bool TryParseRule(ConfigNode c, out AutoRule r)
         {
             r = null;
-            Guid id;
-            if (!Guid.TryParse(c.GetValue("vesselId"), out id)) return false;
             string res = c.GetValue("resource");
             if (string.IsNullOrEmpty(res)) return false;
 
             var rule = new AutoRule();
-            rule.VesselId = id;
+            Guid id;
+            if (Guid.TryParse(c.GetValue("vesselId"), out id)) rule.VesselId = id;
             rule.VesselName = c.GetValue("vesselName") ?? string.Empty;
+            rule.ScopeKind = (int)ParseD(c.GetValue("scope"), AutoRule.ScopeVessel);
+            try { rule.ScopeType = (VesselType)Enum.Parse(typeof(VesselType), c.GetValue("scopeType") ?? "Ship"); }
+            catch { rule.ScopeType = VesselType.Ship; }
+            rule.ScopeBodyName = c.GetValue("scopeBody") ?? string.Empty;
             rule.Resource = res;
             rule.Threshold = ParseD(c.GetValue("threshold"), 0.3);
             rule.Target = ParseD(c.GetValue("target"), 1.0);
@@ -165,16 +179,16 @@ namespace ResupplyNetwork
             var r = new DeliveryRecord();
             r.VesselId = id;
             r.VesselName = c.GetValue("vesselName") ?? string.Empty;
-            r.DueUT = ParseD(c.GetValue("dueUT"));
-            r.OrderedUT = ParseD(c.GetValue("orderedUT"));
-            r.Paid = ParseD(c.GetValue("paid"));
+            r.DueUT = ParseD(c.GetValue("dueUT"), 0.0);
+            r.OrderedUT = ParseD(c.GetValue("orderedUT"), 0.0);
+            r.Paid = ParseD(c.GetValue("paid"), 0.0);
             r.ZoneName = c.GetValue("zone") ?? string.Empty;
 
             var nodes = c.GetNodes("ITEM");
             for (int i = 0; i < nodes.Length; i++)
             {
                 string res = nodes[i].GetValue("resource");
-                double amt = ParseD(nodes[i].GetValue("amount"));
+                double amt = ParseD(nodes[i].GetValue("amount"), 0.0);
                 if (string.IsNullOrEmpty(res) || amt <= 0.0) continue;
                 r.Items.Add(new DeliveryItem { Resource = res, Amount = amt });
             }
@@ -183,7 +197,7 @@ namespace ResupplyNetwork
             if (r.Items.Count == 0)
             {
                 string legacyRes = c.GetValue("resource");
-                double legacyAmt = ParseD(c.GetValue("amount"));
+                double legacyAmt = ParseD(c.GetValue("amount"), 0.0);
                 if (!string.IsNullOrEmpty(legacyRes) && legacyAmt > 0.0)
                     r.Items.Add(new DeliveryItem { Resource = legacyRes, Amount = legacyAmt });
             }
@@ -220,7 +234,6 @@ namespace ResupplyNetwork
             return null;
         }
 
-        /// <summary>按报价结果下单：只写入报价里实际可交付的部分。</summary>
         public DeliveryRecord Enqueue(Vessel v, MultiQuote q)
         {
             if (v == null || q == null || !q.Ok || q.Lines.Count == 0) return null;
@@ -245,14 +258,110 @@ namespace ResupplyNetwork
             if (index < 0 || index >= Pending.Count) return 0.0;
             var d = Pending[index];
             Pending.RemoveAt(index);
+            return Refund(d.Paid, ResupplySettings.Instance.CancelRefund);
+        }
 
-            double ratio = ResupplySettings.Instance.CancelRefund;
+        private static double Refund(double paid, double ratio)
+        {
             if (ratio < 0.0) ratio = 0.0;
             if (ratio > 1.0) ratio = 1.0;
-            double refund = d.Paid * ratio;
+            double refund = paid * ratio;
             if (refund > 0.0 && Funding.Instance != null)
                 Funding.Instance.AddFunds(refund, TransactionReasons.None);
             return refund;
+        }
+
+        // ------------------------------------------------------------------
+        //  定时补给规则
+        // ------------------------------------------------------------------
+
+        public AutoRule AddRule(Vessel v, string resource, double threshold, double target,
+                                double interval, double budget, int scopeKind)
+        {
+            if (v == null || string.IsNullOrEmpty(resource)) return null;
+
+            for (int i = 0; i < AutoRules.Count; i++)
+            {
+                var e = AutoRules[i];
+                if (e.Resource != resource) continue;
+                if (e.ScopeKind != scopeKind) continue;
+                if (scopeKind == AutoRule.ScopeVessel && e.VesselId != v.id) continue;
+                if (scopeKind == AutoRule.ScopeVesselType && e.ScopeType != v.vesselType) continue;
+                if (scopeKind == AutoRule.ScopeBody &&
+                    !string.Equals(e.ScopeBodyName, v.mainBody != null ? v.mainBody.bodyName : "", StringComparison.OrdinalIgnoreCase)) continue;
+
+                e.Threshold = threshold;
+                e.Target = target;
+                e.Interval = interval;
+                e.Budget = budget;
+                e.VesselName = v.vesselName;
+                e.Enabled = true;
+                return e;
+            }
+
+            var r = new AutoRule();
+            r.VesselId = v.id;
+            r.VesselName = v.vesselName;
+            r.Resource = resource;
+            r.Threshold = threshold;
+            r.Target = target;
+            r.Interval = interval;
+            r.Budget = budget;
+            r.ScopeKind = scopeKind;
+            r.ScopeType = v.vesselType;
+            r.ScopeBodyName = v.mainBody != null ? v.mainBody.bodyName : string.Empty;
+            AutoRules.Add(r);
+            return r;
+        }
+
+        public void RemoveRule(int index)
+        {
+            if (index >= 0 && index < AutoRules.Count) AutoRules.RemoveAt(index);
+        }
+
+        public bool HasPendingFor(Guid vesselId, string resource)
+        {
+            for (int i = 0; i < Pending.Count; i++)
+            {
+                var d = Pending[i];
+                if (d.VesselId != vesselId) continue;
+                for (int j = 0; j < d.Items.Count; j++)
+                    if (d.Items[j].Resource == resource) return true;
+            }
+            return false;
+        }
+
+        /// <summary>把规则展开成它作用的所有舰船。</summary>
+        private static List<Vessel> TargetsOf(AutoRule r)
+        {
+            var list = new List<Vessel>();
+            if (r.ScopeKind == AutoRule.ScopeVessel)
+            {
+                Vessel v = FindVessel(r.VesselId);
+                if (v != null) list.Add(v);
+                return list;
+            }
+
+            var all = FlightGlobals.Vessels;
+            if (all == null) return list;
+            for (int i = 0; i < all.Count; i++)
+            {
+                var v = all[i];
+                if (v == null) continue;
+                if (v.vesselType == VesselType.Debris || v.vesselType == VesselType.Flag ||
+                    v.vesselType == VesselType.EVA || v.vesselType == VesselType.Unknown) continue;
+
+                if (r.ScopeKind == AutoRule.ScopeVesselType)
+                {
+                    if (v.vesselType == r.ScopeType) list.Add(v);
+                }
+                else if (r.ScopeKind == AutoRule.ScopeBody)
+                {
+                    string body = v.mainBody != null ? v.mainBody.bodyName : string.Empty;
+                    if (string.Equals(body, r.ScopeBodyName, StringComparison.OrdinalIgnoreCase)) list.Add(v);
+                }
+            }
+            return list;
         }
 
         private void Update()
@@ -280,7 +389,10 @@ namespace ResupplyNetwork
                 Vessel v = FindVessel(d.VesselId);
                 if (v == null)
                 {
-                    Debug.LogWarning("[ResupplyNetwork] 目标舰船已不存在，订单作废（" + d.KindCount + " 种物资）");
+                    double refund = Refund(d.Paid, ResupplySettings.Instance.VesselLostRefund);
+                    string lost = Loc.T("#LOC_RN_Msg_VesselGone", d.KindCount, refund.ToString("N0"));
+                    Debug.LogWarning("[ResupplyNetwork] " + lost);
+                    ScreenMessages.PostScreenMessage(lost, 8f, ScreenMessageStyle.UPPER_CENTER);
                     Pending.RemoveAt(i);
                     continue;
                 }
@@ -290,74 +402,22 @@ namespace ResupplyNetwork
                 {
                     var it = d.Items[j];
                     double added = VesselResources.Add(v, it.Resource, it.Amount);
-                    if (sb.Length > 0) sb.Append("，");
+                    if (sb.Length > 0) sb.Append(", ");
                     sb.Append(ResourceCatalog.DisplayName(it.Resource)).Append(" +").Append(added.ToString("N1"));
                 }
                 Pending.RemoveAt(i);
 
                 string name = string.IsNullOrEmpty(d.VesselName) ? v.vesselName : d.VesselName;
-                string msg = "补给到达 " + name + "：" + sb;
+                string msg = Loc.T("#LOC_RN_Msg_Comm", name, sb.ToString());
                 Debug.Log("[ResupplyNetwork] " + msg);
                 ScreenMessages.PostScreenMessage(msg, 8f, ScreenMessageStyle.UPPER_CENTER);
             }
         }
 
-        // ------------------------------------------------------------------
-        //  定时补给规则
-        // ------------------------------------------------------------------
-
-        /// <summary>新增或更新一条规则（同一舰船+同一资源只保留一条）。</summary>
-        public AutoRule AddRule(Vessel v, string resource, double threshold, double target,
-                                double interval, double budget)
-        {
-            if (v == null || string.IsNullOrEmpty(resource)) return null;
-
-            for (int i = 0; i < AutoRules.Count; i++)
-            {
-                var e = AutoRules[i];
-                if (e.VesselId != v.id || e.Resource != resource) continue;
-                e.Threshold = threshold;
-                e.Target = target;
-                e.Interval = interval;
-                e.Budget = budget;
-                e.VesselName = v.vesselName;
-                e.Enabled = true;
-                return e;
-            }
-
-            var r = new AutoRule();
-            r.VesselId = v.id;
-            r.VesselName = v.vesselName;
-            r.Resource = resource;
-            r.Threshold = threshold;
-            r.Target = target;
-            r.Interval = interval;
-            r.Budget = budget;
-            AutoRules.Add(r);
-            return r;
-        }
-
-        public void RemoveRule(int index)
-        {
-            if (index >= 0 && index < AutoRules.Count) AutoRules.RemoveAt(index);
-        }
-
-        /// <summary>该舰船是否已有这种物资的在途订单（避免规则重复叠加下单）。</summary>
-        public bool HasPendingFor(Guid vesselId, string resource)
-        {
-            for (int i = 0; i < Pending.Count; i++)
-            {
-                var d = Pending[i];
-                if (d.VesselId != vesselId) continue;
-                for (int j = 0; j < d.Items.Count; j++)
-                    if (d.Items[j].Resource == resource) return true;
-            }
-            return false;
-        }
-
         private void ProcessAutoRules(double ut)
         {
             if (AutoRules.Count == 0) return;
+            var s = ResupplySettings.Instance;
 
             for (int i = AutoRules.Count - 1; i >= 0; i--)
             {
@@ -370,73 +430,77 @@ namespace ResupplyNetwork
                 r.LastCheckUT = ut;
                 r.Checked = true;
 
-                Vessel v = FindVessel(r.VesselId);
-                if (v == null)
+                List<Vessel> targets = TargetsOf(r);
+                if (targets.Count == 0)
                 {
-                    r.Enabled = false;
-                    Debug.LogWarning("[ResupplyNetwork] 定时补给规则的目标舰船已不存在，已停用: "
-                                     + ResourceCatalog.DisplayName(r.Resource));
+                    if (r.ScopeKind == AutoRule.ScopeVessel)
+                    {
+                        r.Enabled = false;
+                        Debug.LogWarning("[ResupplyNetwork] " + Loc.T("#LOC_RN_Msg_AutoDisabled",
+                                          ResourceCatalog.DisplayName(r.Resource)));
+                    }
                     continue;
                 }
 
-                double current = VesselResources.GetAmount(v, r.Resource);
-                double capacity = current + VesselResources.GetFreeCapacity(v, r.Resource);
-
-                // 观测消耗速率：班期比续航还长就会在到货前断货（这是离线仿真里暴露的典型错误配置）
-                if (!firstCheck && r.PrevLevel >= 0.0 && ut > prevCheckUT)
+                for (int t = 0; t < targets.Count; t++)
                 {
-                    double consumed = r.PrevLevel - current;
-                    if (consumed > 0.0)
+                    Vessel v = targets[t];
+                    double current = VesselResources.GetAmount(v, r.Resource);
+                    double capacity = current + VesselResources.GetFreeCapacity(v, r.Resource);
+
+                    // 消耗速率预警只在单船规则下做（多目标时水位是混在一起的，估不准）
+                    if (r.ScopeKind == AutoRule.ScopeVessel && !firstCheck && r.PrevLevel >= 0.0 && ut > prevCheckUT)
                     {
-                        double perSecond = consumed / (ut - prevCheckUT);
-                        double endurance = perSecond > 0.0 ? current / perSecond : double.MaxValue;
-                        if (endurance < r.Interval)
+                        double consumed = r.PrevLevel - current;
+                        if (consumed > 0.0)
                         {
-                            Debug.LogWarning("[ResupplyNetwork] 班期可能过长: " + v.vesselName + " · "
-                                             + ResourceCatalog.DisplayName(r.Resource)
-                                             + " 按当前消耗约 " + CostCore.FormatDuration(endurance)
-                                             + " 就会耗尽，但班期是 " + r.IntervalDays + " 天，可能在到货前断货");
+                            double perSecond = consumed / (ut - prevCheckUT);
+                            double endurance = perSecond > 0.0 ? current / perSecond : double.MaxValue;
+                            if (endurance < r.Interval)
+                                Debug.LogWarning("[ResupplyNetwork] " + Loc.T("#LOC_RN_Warn_Cadence",
+                                                  v.vesselName, ResourceCatalog.DisplayName(r.Resource),
+                                                  CostCore.FormatDuration(endurance), r.IntervalDays));
                         }
                     }
+                    if (r.ScopeKind == AutoRule.ScopeVessel) r.PrevLevel = current;
+
+                    if (HasPendingFor(v.id, r.Resource)) continue;
+
+                    double need = CostCore.TopUpAmount(current, capacity, r.Threshold, r.Target);
+                    if (need <= 0.0) continue;
+
+                    var cart = new List<CartItem>(1);
+                    cart.Add(new CartItem { Resource = r.Resource, Amount = need });
+                    MultiQuote q = CostModel.QuoteMulti(v, cart);
+                    if (!q.Ok)
+                    {
+                        Debug.LogWarning("[ResupplyNetwork] " + Loc.T("#LOC_RN_Msg_AutoNoQuote", q.Reason));
+                        continue;
+                    }
+                    if (r.Budget > 0.0 && q.Total > r.Budget)
+                    {
+                        Debug.Log("[ResupplyNetwork] " + Loc.T("#LOC_RN_Msg_AutoSkipBudget",
+                                          r.Budget.ToString("N0"), ResourceCatalog.DisplayName(r.Resource),
+                                          q.Total.ToString("N0")));
+                        continue;
+                    }
+                    if (Funding.Instance == null || Funding.Instance.Funds < q.Total)
+                    {
+                        Debug.Log("[ResupplyNetwork] " + Loc.T("#LOC_RN_Msg_AutoSkipFunds",
+                                          q.Total.ToString("N0"), ResourceCatalog.DisplayName(r.Resource)));
+                        continue;
+                    }
+
+                    Funding.Instance.AddFunds(-q.Total, TransactionReasons.None);
+                    Enqueue(v, q);
+
+                    double pct = capacity > 0.0 ? current / capacity * 100.0 : 0.0;
+                    string msg = Loc.T("#LOC_RN_Msg_AutoOrder", v.vesselName,
+                                       ResourceCatalog.DisplayName(r.Resource), need.ToString("N0"),
+                                       pct.ToString("N0"));
+                    Debug.Log("[ResupplyNetwork] " + msg + " (" + q.Total.ToString("N0") + " funds)");
+                    ScreenMessages.PostScreenMessage(msg, 6f, ScreenMessageStyle.UPPER_CENTER);
                 }
-                r.PrevLevel = current;
-
-                if (HasPendingFor(v.id, r.Resource)) continue;
-
-                double need = CostCore.TopUpAmount(current, capacity, r.Threshold, r.Target);
-                if (need <= 0.0) continue;
-
-                var cart = new List<CartItem>(1);
-                cart.Add(new CartItem { Resource = r.Resource, Amount = need });
-                MultiQuote q = CostModel.QuoteMulti(v, cart);
-                if (!q.Ok)
-                {
-                    Debug.LogWarning("[ResupplyNetwork] 定时补给无法报价: " + q.Reason);
-                    continue;
-                }
-
-                if (r.Budget > 0.0 && q.Total > r.Budget)
-                {
-                    Debug.Log("[ResupplyNetwork] 定时补给跳过（超出单笔预算 " + r.Budget.ToString("N0")
-                              + "，需要 " + q.Total.ToString("N0") + "）: " + ResourceCatalog.DisplayName(r.Resource));
-                    continue;
-                }
-                if (Funding.Instance == null || Funding.Instance.Funds < q.Total)
-                {
-                    Debug.Log("[ResupplyNetwork] 定时补给跳过（资金不足 " + q.Total.ToString("N0") + "）: "
-                              + ResourceCatalog.DisplayName(r.Resource));
-                    continue;
-                }
-
-                Funding.Instance.AddFunds(-q.Total, TransactionReasons.None);
-                Enqueue(v, q);
-
-                double pct = capacity > 0.0 ? current / capacity * 100.0 : 0.0;
-                string msg = "定时补给已下单: " + v.vesselName + " " + ResourceCatalog.DisplayName(r.Resource)
-                             + " +" + need.ToString("N0")
-                             + "（触发时余量 " + pct.ToString("N0") + "%）";
-                Debug.Log("[ResupplyNetwork] " + msg + "，花费 " + q.Total.ToString("N0"));
-                ScreenMessages.PostScreenMessage(msg, 6f, ScreenMessageStyle.UPPER_CENTER);
             }
         }
     }

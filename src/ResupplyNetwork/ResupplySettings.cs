@@ -43,6 +43,12 @@ namespace ResupplyNetwork
         public double AutoTarget = 1.0;         // 补到容量的 100%
         public double AutoIntervalDays = 30.0;  // 每 30 Kerbin 日检查一次
         public double AutoMaxFunds = 50000.0;   // 单笔预算上限，<=0 表示不限
+        // ---- 加急 ----
+        public double RushCostMultiplier = 2.5; // 加急费用倍率
+        public double RushTimeFactor = 0.4;     // 加急只花常规时间的这个比例
+        // ---- 前置条件与损失 ----
+        public bool RequireCommLink = true;     // 必须有可用通信链路
+        public double VesselLostRefund = 0.5;   // 目标舰船损毁时的退款比例
         public double MinDensity = 0.0001;
         public double MinUnitPrice = 0.01;
         public bool AutoComputeZones = true;
@@ -121,6 +127,10 @@ namespace ResupplyNetwork
                 s.AutoTarget = gp.AutoTarget;
                 s.AutoIntervalDays = gp.AutoIntervalDays;
                 s.AutoMaxFunds = gp.AutoMaxFunds;
+                s.RushCostMultiplier = gp.RushCostMultiplier;
+                s.RushTimeFactor = gp.RushTimeFactor;
+                s.RequireCommLink = gp.RequireCommLink;
+                s.VesselLostRefund = gp.VesselLostRefund;
 
                 // 实时刷新设置页上的参考报价（用的是同一套 CostCore 公式）
                 gp.Reference = ReferenceQuote.Build();
@@ -168,6 +178,11 @@ namespace ResupplyNetwork
             AutoTarget = GetD(n, "autoTarget", AutoTarget);
             AutoIntervalDays = GetD(n, "autoIntervalDays", AutoIntervalDays);
             AutoMaxFunds = GetD(n, "autoMaxFunds", AutoMaxFunds);
+            RushCostMultiplier = GetD(n, "rushCostMultiplier", RushCostMultiplier);
+            RushTimeFactor = GetD(n, "rushTimeFactor", RushTimeFactor);
+            VesselLostRefund = GetD(n, "vesselLostRefund", VesselLostRefund);
+            string comm = n.GetValue("requireCommLink");
+            if (!string.IsNullOrEmpty(comm)) RequireCommLink = comm.Trim().ToLowerInvariant() != "false";
             MinDensity = GetD(n, "minDensity", MinDensity);
             MinUnitPrice = GetD(n, "minUnitPrice", MinUnitPrice);
 

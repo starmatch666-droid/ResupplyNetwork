@@ -26,7 +26,7 @@ namespace ResupplyNetwork
         private Vector2 _bodyScroll;
         private Vector2 _typeScroll;
 
-        private string _bodyFilter;                                   // null = 全部天体
+        private string _bodyFilter;
         private readonly HashSet<VesselType> _typeFilter = new HashSet<VesselType>();
 
         private Guid _vesselId = Guid.Empty;
@@ -34,15 +34,22 @@ namespace ResupplyNetwork
         private string _amountText = "100";
         private string _status = string.Empty;
         private readonly List<CartItem> _cart = new List<CartItem>();
+        private bool _rush;
 
-        // 定时补给规则（独立窗口）
+        private string _resSearch = string.Empty;
+        private int _resSort;
+
         private bool _rulesVisible;
-        private Rect _rulesRect = new Rect(340f, 140f, 760f, 560f);
+        private Rect _rulesRect = new Rect(340f, 140f, 800f, 580f);
         private Vector2 _rulesScroll;
         private string _autoThresholdText = "30";
         private string _autoTargetText = "100";
         private string _autoIntervalText = "30";
         private string _autoBudgetText = "50000";
+        private int _ruleScope;
+        private bool _layoutLoaded;
+        private bool _layoutDirty;
+        private float _lastLayoutSave;
 
         private static readonly HashSet<VesselType> SkippedTypes = new HashSet<VesselType>
         {
@@ -63,6 +70,7 @@ namespace ResupplyNetwork
         private void OnDestroy()
         {
             ReleaseLocks();
+            if (_layoutLoaded) SaveLayout();
             if (Instance == this) Instance = null;
         }
 
@@ -72,6 +80,12 @@ namespace ResupplyNetwork
 
         public void SetVisible(bool v)
         {
+            if (v && !_layoutLoaded)
+            {
+                WindowLayout.Load("main", ref _rect, MinW, MinH, MaxW, MaxH);
+                WindowLayout.Load("rules", ref _rulesRect, MinW, MinH, MaxW, MaxH);
+                _layoutLoaded = true;
+            }
             _visible = v;
             if (v) InputLockManager.SetControlLock(ControlTypes.ALL_SHIP_CONTROLS, LockId);
             else { _rulesVisible = false; ReleaseLocks(); }
@@ -98,6 +112,13 @@ namespace ResupplyNetwork
             else InputLockManager.RemoveControlLock(id);
         }
 
+        private void SaveLayout()
+        {
+            WindowLayout.Save("main", _rect);
+            WindowLayout.Save("rules", _rulesRect);
+            _layoutDirty = false;
+        }
+
         // ------------------------------------------------------------------
 
         private void OnGUI()
@@ -109,36 +130,44 @@ namespace ResupplyNetwork
             }
 
             if (HighLogic.Skin != null) GUI.skin = HighLogic.Skin;
-            _rect = GUILayout.Window(WindowId, _rect, DrawWindow, ToolbarIntegration.ModName,
+
+            Rect before = _rect;
+            _rect = GUILayout.Window(WindowId, _rect, DrawWindow, Loc.T("#LOC_RN_Title"),
                                      GUILayout.MinWidth(MinW), GUILayout.MinHeight(MinH));
+            if (before != _rect) _layoutDirty = true;
 
             bool over = _rect.Contains(Event.current.mousePosition);
             if (_rulesVisible)
             {
-                _rulesRect = GUILayout.Window(RulesWindowId, _rulesRect, DrawRulesWindow, "定时补给规则",
-                                              GUILayout.MinWidth(680f), GUILayout.MinHeight(420f));
+                Rect rBefore = _rulesRect;
+                _rulesRect = GUILayout.Window(RulesWindowId, _rulesRect, DrawRulesWindow, Loc.T("#LOC_RN_RulesTitle"),
+                                              GUILayout.MinWidth(MinW), GUILayout.MinHeight(MinH));
+                if (rBefore != _rulesRect) _layoutDirty = true;
                 over |= _rulesRect.Contains(Event.current.mousePosition);
             }
             SetCameraLock(over);
+
+            if (_layoutDirty && Time.realtimeSinceStartup - _lastLayoutSave > 5f)
+            {
+                _lastLayoutSave = Time.realtimeSinceStartup;
+                SaveLayout();
+            }
         }
 
         private void DrawWindow(int id)
         {
             float h = _rect.height;
-            float vesselH = Mathf.Max(210f, h * 0.24f);
-            float resourceH = Mathf.Max(170f, h * 0.22f);
+            float vesselH = Mathf.Max(210f, h * 0.22f);
+            float resourceH = Mathf.Max(170f, h * 0.19f);
             float cartH = Mathf.Max(110f, h * 0.14f);
             float pendingH = Mathf.Max(110f, h * 0.14f);
 
             GUILayout.BeginVertical();
-
             DrawVesselSection(vesselH);
             DrawResourceSection(resourceH);
             DrawCartSection(cartH);
             DrawPendingSection(pendingH);
-
             if (!string.IsNullOrEmpty(_status)) GUILayout.Label(_status);
-
             GUILayout.EndVertical();
 
             GUI.DragWindow(new Rect(0f, 0f, 10000f, 22f));
@@ -159,6 +188,7 @@ namespace ResupplyNetwork
             {
                 _rect.width = Mathf.Clamp(_rect.width + Event.current.delta.x, MinW, MaxW);
                 _rect.height = Mathf.Clamp(_rect.height + Event.current.delta.y, MinH, MaxH);
+                _layoutDirty = true;
                 Event.current.Use();
             }
             if (Event.current.type == EventType.MouseUp) _resizing = false;
@@ -168,16 +198,15 @@ namespace ResupplyNetwork
 
         private void DrawVesselSection(float height)
         {
-            GUILayout.Label("1. 目标航天器");
+            GUILayout.Label(Loc.T("#LOC_RN_Sec_Vessel"));
 
             List<Vessel> all = EligibleVessels();
             if (all.Count == 0)
             {
-                GUILayout.Label("（当前场景没有可补给的航天器）");
+                GUILayout.Label(Loc.T("#LOC_RN_NoVessels"));
                 return;
             }
 
-            // ---- 收集筛选维度：只列出实际存在的天体与类型 ----
             var bodyKeys = new List<string>();
             var bodyLabels = new Dictionary<string, string>();
             var typeKeys = new List<VesselType>();
@@ -201,30 +230,27 @@ namespace ResupplyNetwork
             if (_bodyFilter != null && !bodyKeys.Contains(_bodyFilter)) _bodyFilter = null;
             _typeFilter.RemoveWhere(t => !typeKeys.Contains(t));
 
-            // ---- 天体筛选 ----
             GUILayout.BeginHorizontal();
-            GUILayout.Label("天体", GUILayout.Width(40f));
+            GUILayout.Label(Loc.T("#LOC_RN_Filter_Body"), GUILayout.Width(40f));
             _bodyScroll = GUILayout.BeginScrollView(_bodyScroll, false, false, GUILayout.Height(26f));
             GUILayout.BeginHorizontal();
-            if (GUILayout.Toggle(_bodyFilter == null, "全部", GUILayout.Width(64f)) != (_bodyFilter == null))
+            if (GUILayout.Toggle(_bodyFilter == null, Loc.T("#LOC_RN_Filter_All"), GUILayout.Width(64f)) != (_bodyFilter == null))
                 _bodyFilter = null;
             for (int i = 0; i < bodyKeys.Count; i++)
             {
                 string key = bodyKeys[i];
                 bool on = _bodyFilter == key;
-                if (GUILayout.Toggle(on, bodyLabels[key], GUILayout.Width(96f)) != on)
-                    _bodyFilter = key;
+                if (GUILayout.Toggle(on, bodyLabels[key], GUILayout.Width(96f)) != on) _bodyFilter = key;
             }
             GUILayout.EndHorizontal();
             GUILayout.EndScrollView();
             GUILayout.EndHorizontal();
 
-            // ---- 类型筛选（可多选）----
             GUILayout.BeginHorizontal();
-            GUILayout.Label("类型", GUILayout.Width(40f));
+            GUILayout.Label(Loc.T("#LOC_RN_Filter_Type"), GUILayout.Width(40f));
             _typeScroll = GUILayout.BeginScrollView(_typeScroll, false, false, GUILayout.Height(26f));
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button("全部", GUILayout.Width(64f))) _typeFilter.Clear();
+            if (GUILayout.Button(Loc.T("#LOC_RN_Filter_All"), GUILayout.Width(64f))) _typeFilter.Clear();
             for (int i = 0; i < typeKeys.Count; i++)
             {
                 VesselType t = typeKeys[i];
@@ -239,31 +265,24 @@ namespace ResupplyNetwork
             GUILayout.EndScrollView();
             GUILayout.EndHorizontal();
 
-            // ---- 应用筛选 ----
             var vessels = new List<Vessel>();
             for (int i = 0; i < all.Count; i++)
             {
                 var v = all[i];
-                if (_bodyFilter != null)
-                {
-                    if (v.mainBody == null || v.mainBody.bodyName != _bodyFilter) continue;
-                }
+                if (_bodyFilter != null && (v.mainBody == null || v.mainBody.bodyName != _bodyFilter)) continue;
                 if (_typeFilter.Count > 0 && !_typeFilter.Contains(v.vesselType)) continue;
                 vessels.Add(v);
             }
-            GUILayout.Label("显示 " + vessels.Count + " / " + all.Count + " 艘");
+            GUILayout.Label(Loc.T("#LOC_RN_Count", vessels.Count, all.Count));
 
             _vesselScroll = GUILayout.BeginScrollView(_vesselScroll, GUILayout.Height(height));
-            if (vessels.Count == 0)
-            {
-                GUILayout.Label("（当前筛选条件下没有航天器）");
-            }
+            if (vessels.Count == 0) GUILayout.Label(Loc.T("#LOC_RN_NoMatch"));
             for (int i = 0; i < vessels.Count; i++)
             {
                 var v = vessels[i];
                 bool selected = v.id == _vesselId;
                 string label = v.vesselName + "   —   " + BodyLabel(v.mainBody) + " / " + v.situation
-                               + (v.loaded ? "" : "   (未加载)");
+                               + (v.loaded ? "" : "   " + Loc.T("#LOC_RN_Unloaded"));
                 if (GUILayout.Toggle(selected, label) != selected)
                 {
                     _vesselId = v.id;
@@ -275,110 +294,127 @@ namespace ResupplyNetwork
             GUILayout.EndScrollView();
         }
 
-        private static string BodyLabel(CelestialBody body)
-        {
-            if (body == null) return "(未知)";
-            string name = body.displayName;
-            if (string.IsNullOrEmpty(name)) name = body.bodyName;
-            return name;
-        }
-
-        /// <summary>舰船类型的中文标签；未知类型回退到枚举名。</summary>
-        private static string VesselTypeLabel(VesselType t)
-        {
-            switch (t)
-            {
-                case VesselType.Ship: return "飞船";
-                case VesselType.Station: return "空间站";
-                case VesselType.Probe: return "探测器";
-                case VesselType.Lander: return "着陆器";
-                case VesselType.Rover: return "巡视车";
-                case VesselType.Base: return "地面基地";
-                case VesselType.Plane: return "飞机";
-                case VesselType.Relay: return "中继星";
-                case VesselType.DeployedScienceController: return "科学站";
-                case VesselType.DeployedSciencePart: return "科考设备";
-                case VesselType.DeployedGroundPart: return "地面部署件";
-                case VesselType.Debris: return "碎片";
-                case VesselType.Flag: return "旗帜";
-                case VesselType.EVA: return "宇航员";
-                case VesselType.SpaceObject: return "小天体";
-                case VesselType.Unknown: return "未知";
-                default: return t.ToString();
-            }
-        }
-
         private void DrawResourceSection(float height)
         {
-            GUILayout.Label("2. 资源（选中后加入清单）");
+            GUILayout.Label(Loc.T("#LOC_RN_Sec_Resource"));
             Vessel v = SelectedVessel();
             if (v == null)
             {
-                GUILayout.Label("（先选一个航天器）");
+                GUILayout.Label(Loc.T("#LOC_RN_PickVessel"));
                 return;
             }
 
-            _resourceScroll = GUILayout.BeginScrollView(_resourceScroll, GUILayout.Height(height));
-            var names = VesselResources.ListResources(v);
-            if (names.Count == 0)
-            {
-                GUILayout.Label("（该航天器没有任何资源容器）");
-            }
-            else
-            {
-                for (int i = 0; i < names.Count; i++)
-                {
-                    string name = names[i];
-                    double amount = VesselResources.GetAmount(v, name);
-                    double free = VesselResources.GetFreeCapacity(v, name);
-                    string tail = ResourceCatalog.IsExcluded(name) ? "   [排除]" : "";
-                    string label = ResourceCatalog.DisplayName(name) + "   " + amount.ToString("N0") + " / "
-                                   + (amount + free).ToString("N0") + "   可注入 " + free.ToString("N0") + tail;
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(Loc.T("#LOC_RN_Search"), GUILayout.Width(44f));
+            _resSearch = GUILayout.TextField(_resSearch, GUILayout.Width(180f));
+            GUILayout.Label("|", GUILayout.Width(10f));
+            if (GUILayout.Toggle(_resSort == 0, Loc.T("#LOC_RN_Sort_Name"), GUILayout.Width(70f))) _resSort = 0;
+            if (GUILayout.Toggle(_resSort == 1, Loc.T("#LOC_RN_Sort_Free"), GUILayout.Width(70f))) _resSort = 1;
+            if (GUILayout.Toggle(_resSort == 2, Loc.T("#LOC_RN_Sort_Price"), GUILayout.Width(70f))) _resSort = 2;
+            GUILayout.EndHorizontal();
 
-                    bool selected = name == _resource;
-                    if (GUILayout.Toggle(selected, label) != selected)
-                    {
-                        _resource = name;
-                        _amountText = free > 0 ? Math.Floor(free).ToString("F0") : "0";
-                        _status = string.Empty;
-                    }
+            var rows = ResourceRows(v);
+            _resourceScroll = GUILayout.BeginScrollView(_resourceScroll, GUILayout.Height(height));
+            if (rows.Count == 0) GUILayout.Label(Loc.T("#LOC_RN_NoTanks"));
+            for (int i = 0; i < rows.Count; i++)
+            {
+                var r = rows[i];
+                string tail = r.Excluded ? "   " + Loc.T("#LOC_RN_Excluded") : "";
+                string label = r.Label + "   " + r.Amount.ToString("N0") + " / " + r.Capacity.ToString("N0")
+                               + "   " + Loc.T("#LOC_RN_Inject", r.Free.ToString("N0")) + tail;
+                bool selected = r.Name == _resource;
+                if (GUILayout.Toggle(selected, label) != selected)
+                {
+                    _resource = r.Name;
+                    _amountText = r.Free > 0 ? Math.Floor(r.Free).ToString("F0") : "0";
+                    _status = string.Empty;
                 }
             }
             GUILayout.EndScrollView();
 
-            // 滑块按“容器剩余容量”的百分比走，0-100%；旁边的输入框保留精确输入
             double freeCap = string.IsNullOrEmpty(_resource) ? 0.0 : VesselResources.GetFreeCapacity(v, _resource);
             double typed;
             if (!double.TryParse(_amountText, out typed) || typed < 0.0) typed = 0.0;
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("数量", GUILayout.Width(40f));
-
+            GUILayout.Label(Loc.T("#LOC_RN_Amount"), GUILayout.Width(40f));
             float pctIn = freeCap > 0.0 ? (float)Math.Min(1.0, Math.Max(0.0, typed / freeCap)) : 0f;
-            float pctOut = GUILayout.HorizontalSlider(pctIn, 0f, 1f, GUILayout.MinWidth(180f));
-            if (Math.Abs(pctOut - pctIn) > 0.0005f)
-                _amountText = Math.Floor(freeCap * pctOut).ToString("F0");
+            float pctOut = GUILayout.HorizontalSlider(pctIn, 0f, 1f, GUILayout.MinWidth(150f));
+            if (Math.Abs(pctOut - pctIn) > 0.0005f) _amountText = Math.Floor(freeCap * pctOut).ToString("F0");
             GUILayout.Label((pctOut * 100f).ToString("N0") + "%", GUILayout.Width(46f));
-
-            _amountText = GUILayout.TextField(_amountText, GUILayout.Width(110f));
-            GUILayout.Label("/ " + freeCap.ToString("N0"), GUILayout.Width(110f));
-
-            if (GUILayout.Button("25%", GUILayout.Width(50f))) SetAmountFraction(v, 0.25);
-            if (GUILayout.Button("50%", GUILayout.Width(50f))) SetAmountFraction(v, 0.50);
-            if (GUILayout.Button("满", GUILayout.Width(46f))) SetAmountFraction(v, 1.0);
-
+            _amountText = GUILayout.TextField(_amountText, GUILayout.Width(100f));
+            GUILayout.Label("/ " + freeCap.ToString("N0"), GUILayout.Width(100f));
+            if (GUILayout.Button("25%", GUILayout.Width(48f))) SetAmountFraction(v, 0.25);
+            if (GUILayout.Button("50%", GUILayout.Width(48f))) SetAmountFraction(v, 0.50);
             GUI.enabled = !string.IsNullOrEmpty(_resource);
-            if (GUILayout.Button("加入清单", GUILayout.Width(110f))) AddToCart();
+            if (GUILayout.Button(Loc.T("#LOC_RN_AddToCart"), GUILayout.Width(100f))) AddToCart(v);
             GUI.enabled = true;
             GUILayout.EndHorizontal();
+
+            double thr = ResupplySettings.Instance.AutoThreshold * 100.0;
+            if (GUILayout.Button(Loc.T("#LOC_RN_AddAllBelow", thr.ToString("N0") + "%"), GUILayout.Width(240f)))
+                AddAllBelow(v);
+        }
+
+        private struct ResRow
+        {
+            public string Name;
+            public string Label;
+            public double Amount;
+            public double Free;
+            public double Capacity;
+            public double Price;
+            public bool Excluded;
+        }
+
+        private List<ResRow> ResourceRows(Vessel v)
+        {
+            var names = VesselResources.ListResources(v);
+            var rows = new List<ResRow>(names.Count);
+            string needle = (_resSearch ?? string.Empty).Trim().ToLowerInvariant();
+
+            for (int i = 0; i < names.Count; i++)
+            {
+                string name = names[i];
+                string label = ResourceCatalog.DisplayName(name);
+                if (needle.Length > 0)
+                {
+                    if (label.ToLowerInvariant().IndexOf(needle, StringComparison.Ordinal) < 0 &&
+                        name.ToLowerInvariant().IndexOf(needle, StringComparison.Ordinal) < 0) continue;
+                }
+
+                var def = ResourceCatalog.Definition(name);
+                var row = new ResRow();
+                row.Name = name;
+                row.Label = label;
+                row.Amount = VesselResources.GetAmount(v, name);
+                row.Free = VesselResources.GetFreeCapacity(v, name);
+                row.Capacity = row.Amount + row.Free;
+                row.Price = ResourceCatalog.UnitPrice(name, def);
+                row.Excluded = ResourceCatalog.IsExcluded(name);
+                rows.Add(row);
+            }
+
+            if (_resSort == 1) rows.Sort((a, b) => b.Free.CompareTo(a.Free));
+            else if (_resSort == 2) rows.Sort((a, b) => b.Price.CompareTo(a.Price));
+            else rows.Sort((a, b) => string.Compare(a.Label, b.Label, StringComparison.Ordinal));
+            return rows;
         }
 
         private void DrawCartSection(float height)
         {
-            GUILayout.Label("3. 清单（一次下单可包含多种物资）");
+            GUILayout.Label(Loc.T("#LOC_RN_Sec_Cart"));
+
+            Vessel v = SelectedVessel();
+            if (v == null)
+            {
+                GUILayout.Label(Loc.T("#LOC_RN_PickVessel"));
+                return;
+            }
+
             if (_cart.Count == 0)
             {
-                GUILayout.Label("（清单为空，先在上面选资源并加入）");
+                GUILayout.Label(Loc.T("#LOC_RN_CartEmpty"));
                 return;
             }
 
@@ -388,29 +424,29 @@ namespace ResupplyNetwork
                 var c = _cart[i];
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(ResourceCatalog.DisplayName(c.Resource) + "   " + c.Amount.ToString("N0"), GUILayout.Width(320f));
-                if (GUILayout.Button("移除", GUILayout.Width(70f))) _cart.RemoveAt(i);
+                if (GUILayout.Button(Loc.T("#LOC_RN_Remove"), GUILayout.Width(80f))) _cart.RemoveAt(i);
                 GUILayout.EndHorizontal();
             }
             GUILayout.EndScrollView();
 
-            Vessel v = SelectedVessel();
-            if (v == null) return;
+            var s = ResupplySettings.Instance;
+            _rush = GUILayout.Toggle(_rush, Loc.T("#LOC_RN_Rush",
+                s.RushCostMultiplier.ToString("0.##"), s.RushTimeFactor.ToString("0.##")));
 
-            MultiQuote q = CostModel.QuoteMulti(v, _cart);
+            MultiQuote q = CostModel.QuoteMulti(v, _cart, _rush);
             if (!q.Ok)
             {
-                GUILayout.Label("无法报价: " + q.Reason);
+                GUILayout.Label(Loc.T("#LOC_RN_CantOrder", q.Reason));
                 return;
             }
 
-            GUILayout.Label("合计 " + q.TotalMass.ToString("N3") + " t   运力 " + q.Trips + " 趟   目的地 " + q.ZoneName
-                            + "   运费率 " + q.FreightRate.ToString("N0") + " 资金/吨");
-            GUILayout.Label("物资 " + q.MaterialCost.ToString("N0")
-                            + "  +  运费 " + q.FreightCost.ToString("N0")
-                            + "  +  服务 " + q.ServiceCost.ToString("N0")
-                            + "  =  " + q.Total.ToString("N0") + " 资金");
-            GUILayout.Label("预计交付 " + CostCore.FormatDuration(q.LeadTime)
-                            + (q.AnyCapped ? "   ⚠ 部分物资已按容器剩余容量截断" : string.Empty));
+            GUILayout.Label(Loc.T("#LOC_RN_Line_Mass", q.TotalMass.ToString("N3"), q.Trips,
+                                  q.ZoneName, q.FreightRate.ToString("N0")));
+            GUILayout.Label(Loc.T("#LOC_RN_Line_Cost", q.MaterialCost.ToString("N0"),
+                                  q.FreightCost.ToString("N0"), q.ServiceCost.ToString("N0"), q.Total.ToString("N0")));
+            if (q.Rush) GUILayout.Label(Loc.T("#LOC_RN_Line_Rush", q.RushCost.ToString("N0")));
+            GUILayout.Label(Loc.T("#LOC_RN_Line_Lead", CostCore.FormatDuration(q.LeadTime))
+                            + (q.AnyCapped ? "   ⚠ " + Loc.T("#LOC_RN_Capped") : string.Empty));
 
             bool hasQueue = ResupplyQueue.Instance != null;
             bool hasFunds = Funding.Instance != null && Funding.Instance.Funds >= q.Total;
@@ -418,35 +454,34 @@ namespace ResupplyNetwork
             GUILayout.BeginHorizontal();
             GUI.enabled = hasQueue && hasFunds;
             if (GUILayout.Button(hasQueue
-                    ? (hasFunds ? "确认下单（" + q.Total.ToString("N0") + " 资金）" : "资金不足")
-                    : "场景未就绪", GUILayout.Width(300f)))
+                    ? (hasFunds ? Loc.T("#LOC_RN_PlaceOrder", q.Total.ToString("N0")) : Loc.T("#LOC_RN_NoFunds"))
+                    : Loc.T("#LOC_RN_NotReady"), GUILayout.Width(300f)))
             {
                 PlaceOrder(v, q);
             }
             GUI.enabled = true;
-            if (GUILayout.Button("清空清单", GUILayout.Width(110f))) _cart.Clear();
+            if (GUILayout.Button(Loc.T("#LOC_RN_ClearCart"), GUILayout.Width(110f))) _cart.Clear();
             GUILayout.EndHorizontal();
         }
 
         private void DrawPendingSection(float height)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label("4. 待交付", GUILayout.Width(120f));
+            GUILayout.Label(Loc.T("#LOC_RN_Sec_Pending"), GUILayout.Width(120f));
             int ruleCount = ResupplyQueue.Instance != null ? ResupplyQueue.Instance.AutoRules.Count : 0;
-            if (GUILayout.Button("定时补给规则…（" + ruleCount + "）", GUILayout.Width(220f)))
-                ToggleRules();
+            if (GUILayout.Button(Loc.T("#LOC_RN_RulesButton", ruleCount), GUILayout.Width(220f))) ToggleRules();
             GUILayout.EndHorizontal();
 
             if (ResupplyQueue.Instance == null)
             {
-                GUILayout.Label("（队列未就绪）");
+                GUILayout.Label(Loc.T("#LOC_RN_QueueNotReady"));
                 return;
             }
 
             var pending = ResupplyQueue.Instance.Pending;
             if (pending.Count == 0)
             {
-                GUILayout.Label("（没有待交付订单）");
+                GUILayout.Label(Loc.T("#LOC_RN_NoPending"));
                 return;
             }
 
@@ -456,26 +491,25 @@ namespace ResupplyNetwork
             {
                 var d = pending[i];
                 double remain = d.DueUT - ut;
-                string desc = (string.IsNullOrEmpty(d.VesselName) ? "(未知)" : d.VesselName)
-                              + "   " + d.KindCount + " 种物资"
-                              + "   还有 " + CostCore.FormatDuration(remain < 0 ? 0 : remain);
+                string name = string.IsNullOrEmpty(d.VesselName) ? "?" : d.VesselName;
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(desc, GUILayout.Width(420f));
-                if (GUILayout.Button("明细", GUILayout.Width(70f)))
+                GUILayout.Label(Loc.T("#LOC_RN_Line_Pending", name, d.KindCount,
+                                      CostCore.FormatDuration(remain < 0 ? 0.0 : remain)), GUILayout.Width(430f));
+                if (GUILayout.Button(Loc.T("#LOC_RN_Detail"), GUILayout.Width(70f)))
                 {
                     var sb = new System.Text.StringBuilder();
                     for (int j = 0; j < d.Items.Count; j++)
                     {
-                        if (sb.Length > 0) sb.Append("，");
+                        if (sb.Length > 0) sb.Append(" | ");
                         sb.Append(ResourceCatalog.DisplayName(d.Items[j].Resource)).Append(" ").Append(d.Items[j].Amount.ToString("N0"));
                     }
-                    _status = "订单明细: " + sb;
+                    _status = Loc.T("#LOC_RN_OrderDetail", sb.ToString());
                 }
-                if (GUILayout.Button("取消", GUILayout.Width(70f)))
+                if (GUILayout.Button(Loc.T("#LOC_RN_Cancel"), GUILayout.Width(70f)))
                 {
                     double refund = ResupplyQueue.Instance.CancelWithRefund(i);
-                    _status = "已取消，退回 " + refund.ToString("N0") + " 资金";
+                    _status = Loc.T("#LOC_RN_Refunded", refund.ToString("N0"));
                 }
                 GUILayout.EndHorizontal();
             }
@@ -513,34 +547,59 @@ namespace ResupplyNetwork
             _status = string.Empty;
         }
 
-        private void AddToCart()
+        private void AddToCart(Vessel v)
         {
             if (string.IsNullOrEmpty(_resource)) return;
             if (ResourceCatalog.IsExcluded(_resource))
             {
-                _status = "\"" + ResourceCatalog.DisplayName(_resource) + "\" 在排除表里，不能补给";
+                _status = Loc.T("#LOC_RN_ExcludedCant", ResourceCatalog.DisplayName(_resource));
                 return;
             }
-
             double amount;
             if (!double.TryParse(_amountText, out amount) || amount <= 0.0)
             {
-                _status = "数量无效";
+                _status = Loc.T("#LOC_RN_BadAmount");
                 return;
             }
+            AddOrUpdate(_resource, amount);
+        }
 
+        private void AddOrUpdate(string resource, double amount)
+        {
             for (int i = 0; i < _cart.Count; i++)
             {
-                if (_cart[i].Resource == _resource)
+                if (_cart[i].Resource == resource)
                 {
                     _cart[i].Amount = amount;
-                    _status = "已更新清单中的 " + ResourceCatalog.DisplayName(_resource);
+                    _status = Loc.T("#LOC_RN_Updated", ResourceCatalog.DisplayName(resource));
                     return;
                 }
             }
+            _cart.Add(new CartItem { Resource = resource, Amount = amount });
+            _status = Loc.T("#LOC_RN_Added", ResourceCatalog.DisplayName(resource), amount.ToString("N0"));
+        }
 
-            _cart.Add(new CartItem { Resource = _resource, Amount = amount });
-            _status = "已加入清单: " + ResourceCatalog.DisplayName(_resource) + " " + amount.ToString("N0");
+        /// <summary>把船上所有低于阈值的资源一次性加进清单。</summary>
+        private void AddAllBelow(Vessel v)
+        {
+            double threshold = ResupplySettings.Instance.AutoThreshold;
+            var names = VesselResources.ListResources(v);
+            int added = 0;
+            for (int i = 0; i < names.Count; i++)
+            {
+                string name = names[i];
+                if (ResourceCatalog.IsExcluded(name)) continue;
+                double amount = VesselResources.GetAmount(v, name);
+                double free = VesselResources.GetFreeCapacity(v, name);
+                double cap = amount + free;
+                if (cap <= 0.0 || free <= 0.0) continue;
+                if (amount / cap >= threshold) continue;
+                AddOrUpdate(name, Math.Floor(free));
+                added++;
+            }
+            _status = added > 0
+                ? Loc.T("#LOC_RN_AddedBelow", added, (threshold * 100.0).ToString("N0") + "%")
+                : Loc.T("#LOC_RN_NothingBelow");
         }
 
         private void PlaceOrder(Vessel v, MultiQuote q)
@@ -549,15 +608,15 @@ namespace ResupplyNetwork
             {
                 Funding.Instance.AddFunds(-q.Total, TransactionReasons.None);
                 ResupplyQueue.Instance.Enqueue(v, q);
-                _status = "已下单: " + q.Lines.Count + " 种物资，合计 " + q.TotalMass.ToString("N3")
-                          + " t，" + CostCore.FormatDuration(q.LeadTime) + " 后到达";
-                Debug.Log("[ResupplyNetwork] " + _status);
+                _status = Loc.T("#LOC_RN_OrderPlaced", q.Lines.Count, q.TotalMass.ToString("N3") + " t",
+                                CostCore.FormatDuration(q.LeadTime));
+                Debug.Log("[ResupplyNetwork] order placed: " + q.Lines.Count + " kinds, " + q.Total.ToString("N0") + " funds");
                 _cart.Clear();
             }
             catch (Exception e)
             {
-                _status = "下单失败: " + e.Message;
-                Debug.LogError("[ResupplyNetwork] 下单异常: " + e);
+                _status = Loc.T("#LOC_RN_OrderFailed", e.Message);
+                Debug.LogError("[ResupplyNetwork] order failed: " + e);
             }
         }
 
@@ -571,46 +630,53 @@ namespace ResupplyNetwork
 
             if (ResupplyQueue.Instance == null)
             {
-                GUILayout.Label("（队列未就绪：需要在生涯存档的飞行 / 航天中心 / 追踪站场景内）");
+                GUILayout.Label(Loc.T("#LOC_RN_QueueNotReady"));
                 GUILayout.EndVertical();
                 GUI.DragWindow(new Rect(0f, 0f, 10000f, 22f));
                 return;
             }
 
-            GUILayout.Label("模拟现实里的补给班期：每 N 天检查一次余量，低于阈值线才发船。");
-            GUILayout.Label("规则使用主窗口当前选中的航天器与资源。若该物资已有在途订单，本次检查会跳过。");
+            GUILayout.Label(Loc.T("#LOC_RN_RulesHelp1"));
+            GUILayout.Label(Loc.T("#LOC_RN_RulesHelp2"));
 
             Vessel v = SelectedVessel();
             string res = _resource;
             GUILayout.Label(v == null
-                ? "目标: （主窗口里还没选航天器）"
-                : "目标: " + v.vesselName + "    资源: "
-                  + (string.IsNullOrEmpty(res) ? "（未选）" : ResourceCatalog.DisplayName(res)));
+                ? Loc.T("#LOC_RN_RulesNoTarget")
+                : Loc.T("#LOC_RN_RulesTarget", v.vesselName,
+                        string.IsNullOrEmpty(res) ? "-" : ResourceCatalog.DisplayName(res)));
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label("阈值 %", GUILayout.Width(48f));
+            GUILayout.Label(Loc.T("#LOC_RN_Threshold"), GUILayout.Width(76f));
             _autoThresholdText = GUILayout.TextField(_autoThresholdText, GUILayout.Width(58f));
-            GUILayout.Label("补到 %", GUILayout.Width(52f));
+            GUILayout.Label(Loc.T("#LOC_RN_Target"), GUILayout.Width(92f));
             _autoTargetText = GUILayout.TextField(_autoTargetText, GUILayout.Width(58f));
-            GUILayout.Label("每 N 天", GUILayout.Width(52f));
+            GUILayout.Label(Loc.T("#LOC_RN_Cadence"), GUILayout.Width(84f));
             _autoIntervalText = GUILayout.TextField(_autoIntervalText, GUILayout.Width(58f));
-            GUILayout.Label("单笔预算", GUILayout.Width(58f));
+            GUILayout.Label(Loc.T("#LOC_RN_Budget"), GUILayout.Width(84f));
             _autoBudgetText = GUILayout.TextField(_autoBudgetText, GUILayout.Width(90f));
             GUILayout.EndHorizontal();
 
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(Loc.T("#LOC_RN_Scope"), GUILayout.Width(76f));
+            if (GUILayout.Toggle(_ruleScope == 0, Loc.T("#LOC_RN_Scope_Vessel"), GUILayout.Width(100f))) _ruleScope = 0;
+            if (GUILayout.Toggle(_ruleScope == 1, Loc.T("#LOC_RN_Scope_Type"), GUILayout.Width(100f))) _ruleScope = 1;
+            if (GUILayout.Toggle(_ruleScope == 2, Loc.T("#LOC_RN_Scope_Body"), GUILayout.Width(100f))) _ruleScope = 2;
+            GUILayout.EndHorizontal();
+
             GUI.enabled = v != null && !string.IsNullOrEmpty(res);
-            if (GUILayout.Button("添加 / 更新规则", GUILayout.Width(180f))) AddRuleFromSelection(v, res);
+            if (GUILayout.Button(Loc.T("#LOC_RN_AddRule"), GUILayout.Width(200f))) AddRuleFromSelection(v, res);
             GUI.enabled = true;
 
-            GUILayout.Label("已有规则（" + ResupplyQueue.Instance.AutoRules.Count + " 条）");
+            GUILayout.Label(Loc.T("#LOC_RN_ExistingRules", ResupplyQueue.Instance.AutoRules.Count));
 
             var rules = ResupplyQueue.Instance.AutoRules;
-            float listH = Mathf.Max(140f, _rulesRect.height * 0.45f);
+            float listH = Mathf.Max(140f, _rulesRect.height * 0.42f);
             _rulesScroll = GUILayout.BeginScrollView(_rulesScroll, GUILayout.Height(listH));
 
             if (rules.Count == 0)
             {
-                GUILayout.Label("（还没有规则）");
+                GUILayout.Label(Loc.T("#LOC_RN_NoRules"));
             }
             else
             {
@@ -623,27 +689,27 @@ namespace ResupplyNetwork
                     bool enabled = r.Enabled;
                     if (GUILayout.Toggle(enabled, "", GUILayout.Width(24f)) != enabled) r.Enabled = !enabled;
 
-                    string next;
-                    if (!r.Checked) next = "立即";
-                    else
-                    {
-                        double remain = r.LastCheckUT + r.Interval - now;
-                        next = CostCore.FormatDuration(remain < 0.0 ? 0.0 : remain);
-                    }
+                    string next = !r.Checked
+                        ? Loc.T("#LOC_RN_Immediate")
+                        : CostCore.FormatDuration(Math.Max(0.0, r.LastCheckUT + r.Interval - now));
 
-                    string desc = (string.IsNullOrEmpty(r.VesselName) ? "(未知)" : r.VesselName)
-                                  + " · " + ResourceCatalog.DisplayName(r.Resource)
-                                  + " · 低于 " + (r.Threshold * 100.0).ToString("N0")
-                                  + "% 补到 " + (r.Target * 100.0).ToString("N0") + "%"
-                                  + " · 每 " + r.IntervalDays + " 天"
-                                  + (r.Budget > 0.0 ? " · 预算 " + r.Budget.ToString("N0") : " · 不限预算")
-                                  + " · 下次检查 " + next;
-                    GUILayout.Label(desc, GUILayout.Width(540f));
+                    string scopeTag = r.ScopeKind == AutoRule.ScopeVesselType
+                        ? Loc.T("#LOC_RN_ScopeTag", Loc.T("#LOC_RN_Scope_Type"))
+                        : (r.ScopeKind == AutoRule.ScopeBody ? Loc.T("#LOC_RN_ScopeTag", Loc.T("#LOC_RN_Scope_Body")) : "");
 
-                    if (GUILayout.Button("删除", GUILayout.Width(60f)))
+                    GUILayout.Label(Loc.T("#LOC_RN_RuleLine",
+                        (string.IsNullOrEmpty(r.VesselName) ? "?" : r.VesselName) + scopeTag,
+                        ResourceCatalog.DisplayName(r.Resource),
+                        (r.Threshold * 100.0).ToString("N0"),
+                        (r.Target * 100.0).ToString("N0"),
+                        r.IntervalDays,
+                        r.Budget > 0.0 ? Loc.T("#LOC_RN_RuleBudget", r.Budget.ToString("N0")) : Loc.T("#LOC_RN_RuleNoBudget"),
+                        next), GUILayout.Width(560f));
+
+                    if (GUILayout.Button(Loc.T("#LOC_RN_Delete"), GUILayout.Width(70f)))
                     {
                         ResupplyQueue.Instance.RemoveRule(i);
-                        _status = "已删除一条定时补给规则";
+                        _status = Loc.T("#LOC_RN_RuleDeleted");
                     }
                     GUILayout.EndHorizontal();
                 }
@@ -660,7 +726,7 @@ namespace ResupplyNetwork
             if (v == null || string.IsNullOrEmpty(resource)) return;
             if (ResourceCatalog.IsExcluded(resource))
             {
-                _status = "\"" + ResourceCatalog.DisplayName(resource) + "\" 在排除表里，不能建定时补给规则";
+                _status = Loc.T("#LOC_RN_ExcludedRule", ResourceCatalog.DisplayName(resource));
                 return;
             }
 
@@ -669,24 +735,12 @@ namespace ResupplyNetwork
             double days = ParseNumber(_autoIntervalText, 30.0);
             double budget = ParseNumber(_autoBudgetText, 50000.0);
 
-            if (target < threshold)
-            {
-                _status = "「补到」不能低于「阈值」，否则会陷入反复下单";
-                return;
-            }
-            if (days <= 0.0)
-            {
-                _status = "间隔必须大于 0 天";
-                return;
-            }
+            if (target < threshold) { _status = Loc.T("#LOC_RN_Err_TargetBelow"); return; }
+            if (days <= 0.0) { _status = Loc.T("#LOC_RN_Err_Days"); return; }
 
-            ResupplyQueue.Instance.AddRule(v, resource, threshold, target,
-                                           days * CostCore.KerbinDay, budget);
-            _status = "已保存规则: " + v.vesselName + " · " + ResourceCatalog.DisplayName(resource)
-                      + "（低于 " + (threshold * 100.0).ToString("N0")
-                      + "% 补到 " + (target * 100.0).ToString("N0")
-                      + "%，每 " + days.ToString("0.##") + " 天检查）";
-            Debug.Log("[ResupplyNetwork] " + _status);
+            ResupplyQueue.Instance.AddRule(v, resource, threshold, target, days * CostCore.KerbinDay, budget, _ruleScope);
+            _status = Loc.T("#LOC_RN_RuleSaved", v.vesselName, ResourceCatalog.DisplayName(resource));
+            Debug.Log("[ResupplyNetwork] rule saved: scope=" + _ruleScope + " " + resource);
         }
 
         private static double ParsePercent(string text, double fallbackPercent)
@@ -702,6 +756,32 @@ namespace ResupplyNetwork
             double d;
             if (!string.IsNullOrEmpty(text) && double.TryParse(text.Trim(), out d)) return d;
             return fallback;
+        }
+
+        // ------------------------------------------------------------------
+
+        private static string BodyLabel(CelestialBody body)
+        {
+            if (body == null) return "?";
+            string name = body.displayName;
+            if (string.IsNullOrEmpty(name)) name = body.bodyName;
+            return name;
+        }
+
+        private static string VesselTypeLabel(VesselType t)
+        {
+            switch (t)
+            {
+                case VesselType.Ship: return Loc.T("#LOC_RN_VT_Ship");
+                case VesselType.Station: return Loc.T("#LOC_RN_VT_Station");
+                case VesselType.Probe: return Loc.T("#LOC_RN_VT_Probe");
+                case VesselType.Lander: return Loc.T("#LOC_RN_VT_Lander");
+                case VesselType.Rover: return Loc.T("#LOC_RN_VT_Rover");
+                case VesselType.Base: return Loc.T("#LOC_RN_VT_Base");
+                case VesselType.Plane: return Loc.T("#LOC_RN_VT_Plane");
+                case VesselType.Relay: return Loc.T("#LOC_RN_VT_Relay");
+                default: return t.ToString();
+            }
         }
     }
 }

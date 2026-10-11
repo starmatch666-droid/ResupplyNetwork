@@ -52,10 +52,10 @@ namespace ResupplyNetwork
                     items, rate, transfer, s.BTrip, s.STrip, s.SMin, s.TBase);
                 if (!q.Ok) return "参考：无法计算（" + q.Reason + "）";
 
-                string line1 = "250 km 轨道 · 2.5m 最大油罐（2880 LF + 3520 Ox = " + q.TotalMass.ToString("N1") + " t）加满：";
-                string line2 = q.Total.ToString("N0") + " 资金 / " + CostCore.FormatDuration(q.LeadTime);
-                string line3 = "运费率 " + rate.ToString("N0") + " 资金/吨 · " + q.Trips + " 趟 · 物资 " + q.MaterialCost.ToString("N0");
-                string line4 = "运费 " + q.FreightCost.ToString("N0") + " · 服务 " + q.ServiceCost.ToString("N0");
+                string line1 = Loc.T("#LOC_RN_Ref_Head", q.TotalMass.ToString("N1"));
+                string line2 = Loc.T("#LOC_RN_Ref_Cost", q.Total.ToString("N0"), CostCore.FormatDuration(q.LeadTime));
+                string line3 = Loc.T("#LOC_RN_Ref_Rate", rate.ToString("N0"), q.Trips, q.MaterialCost.ToString("N0"));
+                string line4 = Loc.T("#LOC_RN_Ref_Rest", q.FreightCost.ToString("N0"), q.ServiceCost.ToString("N0"));
                 return line1 + "\n" + line2 + "\n" + line3 + "\n" + line4;
             }
             catch (Exception e)

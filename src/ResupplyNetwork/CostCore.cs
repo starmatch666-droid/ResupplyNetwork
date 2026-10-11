@@ -45,6 +45,10 @@ namespace ResupplyNetwork
 
         public string ZoneName;
         public bool AnyCapped;
+
+        public bool Rush;
+        public double RushCost;
+        public string ReasonKey;   // 本地化键；Reason 只作英文兜底
     }
 
     /// <summary>单物资报价（调试热键与离线报告仍在使用）。</summary>
@@ -69,6 +73,9 @@ namespace ResupplyNetwork
         public double LeadTime;
         public string ZoneName;
         public bool CappedByCapacity;
+        public bool Rush;
+        public double RushCost;
+        public string ReasonKey;
     }
 
     /// <summary>
@@ -104,7 +111,12 @@ namespace ResupplyNetwork
             q.FreightRate = freightRate;
             q.TransferTime = transferTime;
 
-            if (items == null || items.Count == 0) { q.Reason = "清单是空的"; return q; }
+            if (items == null || items.Count == 0)
+            {
+                q.Reason = "cart is empty";
+                q.ReasonKey = "#LOC_RN_Err_EmptyCart";
+                return q;
+            }
 
             for (int i = 0; i < items.Count; i++)
             {
@@ -131,7 +143,12 @@ namespace ResupplyNetwork
                 q.AnyCapped |= capped;
             }
 
-            if (q.Lines.Count == 0) { q.Reason = "清单里没有可交付的物资（可能容器已满）"; return q; }
+            if (q.Lines.Count == 0)
+            {
+                q.Reason = "nothing deliverable in the cart";
+                q.ReasonKey = "#LOC_RN_Err_NoDeliverable";
+                return q;
+            }
 
             q.FreightCost = q.TotalMass * freightRate;
 
@@ -177,6 +194,7 @@ namespace ResupplyNetwork
             var q = new DeliveryQuote();
             q.Ok = m.Ok;
             q.Reason = m.Reason;
+            q.ReasonKey = m.ReasonKey;
             q.Resource = resource;
             q.Amount = requestedAmount;
             q.FreightRate = freightRate;
@@ -203,6 +221,34 @@ namespace ResupplyNetwork
         {
             double years = transferTime / KerbinYear;
             return kMass * (1.0 + dvPark / dvRef) * (1.0 + kTime * years) * kPremium;
+        }
+
+        /// <summary>
+        /// 加急：在已算好的常规报价上加一笔附加费，并把交付时间按比例缩短。
+        /// 单列 RushCost 而不是直接乘进物资/运费，是为了让报价明细仍然加得起来。
+        /// </summary>
+        public static void ApplyRush(MultiQuote q, double costMultiplier, double timeFactor)
+        {
+            if (q == null || !q.Ok) return;
+            if (costMultiplier < 1.0) costMultiplier = 1.0;
+            if (timeFactor <= 0.0 || timeFactor > 1.0) timeFactor = 1.0;
+
+            q.Rush = true;
+            q.RushCost = q.Total * (costMultiplier - 1.0);
+            q.Total += q.RushCost;
+            q.LeadTime *= timeFactor;
+        }
+
+        public static void ApplyRush(DeliveryQuote q, double costMultiplier, double timeFactor)
+        {
+            if (!q.Ok) return;
+            if (costMultiplier < 1.0) costMultiplier = 1.0;
+            if (timeFactor <= 0.0 || timeFactor > 1.0) timeFactor = 1.0;
+
+            q.Rush = true;
+            q.RushCost = q.Total * (costMultiplier - 1.0);
+            q.Total += q.RushCost;
+            q.LeadTime *= timeFactor;
         }
 
         // ------------------------------------------------------------------

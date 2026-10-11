@@ -24,6 +24,15 @@ Think commercial resupply flights to a station.
   costs and how long it takes, so you can see the effect while you drag.
 * **Localized resource names** - resources are shown in your game's language.
 * **Amount slider** - choose how much to inject as a percentage, or type an exact number.
+* **Rush orders** - pay a premium to cut the lead time, for when you cannot wait.
+* **Search and sort** - filter a large resource list by name and sort by free capacity or price.
+* **Bulk top-up** - one button adds every resource below the threshold to the cart.
+* **Rule scope** - a single scheduled rule can cover this vessel, all vessels of the
+  same type, or everything on the same body.
+* **Localized UI** - English and Chinese are both included.
+* **CommNet requirement** - optionally refuse to resupply a vessel with no working
+  comms link (on by default).
+* **Remembers window layout** between sessions.
 
 ## Requirements
 
@@ -83,6 +92,13 @@ MIT
 * **难度设置页** - 所有系数都是游戏难度选项里的滑块，并实时显示"加满一个 2.5m 油罐要多少钱、多久"作为参考
 * **资源名本地化** - 按游戏语言显示资源名
 * **数量滑块** - 按百分比选取注入量，也可以直接输入精确值
+* **加急订单** - 多付钱缩短交付时间
+* **搜索与排序** - 资源多时按名称搜索，按可注入量或单价排序
+* **一键补满** - 把低于阈值的资源一次性加进清单
+* **规则作用域** - 一条定时规则可以覆盖当前舰船、同类型全部舰船，或同一天体上的全部舰船
+* **界面双语** - 内置英文与简体中文
+* **通信链路要求** - 可要求目标必须有可用通信链路（默认开启）
+* **记住窗口位置与尺寸**
 
 ## 依赖
 

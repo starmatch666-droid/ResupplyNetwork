@@ -12,22 +12,31 @@ namespace ResupplyNetwork
     /// <summary>把 KSP 侧的资源定义 / 目的地换算好，再交给纯计算层 CostCore。</summary>
     public static class CostModel
     {
-        /// <summary>多物资一次性报价。排除表里的物资会被跳过。</summary>
         public static MultiQuote QuoteMulti(Vessel vessel, IList<CartItem> cart)
         {
+            return QuoteMulti(vessel, cart, false);
+        }
+
+        /// <summary>多物资一次性报价。排除表里的物资会被跳过。rush = 加急订单。</summary>
+        public static MultiQuote QuoteMulti(Vessel vessel, IList<CartItem> cart, bool rush)
+        {
             var s = ResupplySettings.Instance;
-            if (vessel == null) return Fail("没有目标舰船");
-            if (cart == null || cart.Count == 0) return Fail("清单是空的");
+            if (vessel == null) return Fail(Loc.T("#LOC_RN_Err_NoVessel"));
+            if (cart == null || cart.Count == 0) return Fail(Loc.T("#LOC_RN_Err_EmptyCart"));
+
+            string blocked = ShipChecks.Check(vessel);
+            if (blocked != null) return Fail(blocked);
 
             DestinationZone zone = ZoneCalculator.Resolve(vessel);
 
             var items = new List<QuoteItem>(cart.Count);
+            string lastExcluded = null;
             for (int i = 0; i < cart.Count; i++)
             {
                 var c = cart[i];
                 if (c == null || string.IsNullOrEmpty(c.Resource)) continue;
                 if (c.Amount <= 0.0) continue;
-                if (ResourceCatalog.IsExcluded(c.Resource)) continue;
+                if (ResourceCatalog.IsExcluded(c.Resource)) { lastExcluded = c.Resource; continue; }
 
                 PartResourceDefinition def = ResourceCatalog.Definition(c.Resource);
                 if (def == null) continue;
@@ -41,12 +50,23 @@ namespace ResupplyNetwork
                 items.Add(it);
             }
 
-            if (items.Count == 0) return Fail("清单里没有可交付的物资（可能被排除表过滤或数量为 0）");
+            if (items.Count == 0)
+            {
+                if (lastExcluded != null)
+                    return Fail(Loc.T("#LOC_RN_Err_Excluded", ResourceCatalog.DisplayName(lastExcluded)));
+                return Fail(Loc.T("#LOC_RN_Err_NoDeliverable"));
+            }
 
             MultiQuote q = CostCore.QuoteMulti(
                 items, zone.FreightRate, zone.TransferTime,
                 s.BTrip, s.STrip, s.SMin, s.TBase);
+            if (!q.Ok)
+            {
+                if (!string.IsNullOrEmpty(q.ReasonKey)) q.Reason = Loc.T(q.ReasonKey);
+                return q;
+            }
             q.ZoneName = zone.Name;
+            if (rush) CostCore.ApplyRush(q, s.RushCostMultiplier, s.RushTimeFactor);
             return q;
         }
 
@@ -64,13 +84,32 @@ namespace ResupplyNetwork
             q.Resource = resource;
             q.Amount = amount;
 
-            if (vessel == null) { q.Reason = "没有目标舰船"; return q; }
-            if (string.IsNullOrEmpty(resource)) { q.Reason = "没有选择资源"; return q; }
-            if (amount <= 0.0) { q.Reason = "数量必须大于 0"; return q; }
-            if (ResourceCatalog.IsExcluded(resource)) { q.Reason = "\"" + resource + "\" 在排除表里"; return q; }
+            if (vessel == null)
+            {
+                q.Reason = Loc.T("#LOC_RN_Err_NoVessel"); q.ReasonKey = "#LOC_RN_Err_NoVessel"; return q;
+            }
+            if (string.IsNullOrEmpty(resource))
+            {
+                q.Reason = Loc.T("#LOC_RN_Err_NoResource"); q.ReasonKey = "#LOC_RN_Err_NoResource"; return q;
+            }
+            if (amount <= 0.0)
+            {
+                q.Reason = Loc.T("#LOC_RN_Err_Amount"); q.ReasonKey = "#LOC_RN_Err_Amount"; return q;
+            }
+            if (ResourceCatalog.IsExcluded(resource))
+            {
+                q.Reason = Loc.T("#LOC_RN_Err_Excluded", ResourceCatalog.DisplayName(resource));
+                q.ReasonKey = "#LOC_RN_Err_Excluded";
+                return q;
+            }
 
             PartResourceDefinition def = ResourceCatalog.Definition(resource);
-            if (def == null) { q.Reason = "找不到资源定义: " + resource; return q; }
+            if (def == null)
+            {
+                q.Reason = Loc.T("#LOC_RN_Err_NoDef", resource);
+                q.ReasonKey = "#LOC_RN_Err_NoDef";
+                return q;
+            }
 
             double free = VesselResources.GetFreeCapacity(vessel, resource);
             DestinationZone zone = ZoneCalculator.Resolve(vessel);

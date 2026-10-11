@@ -1,0 +1,27 @@
+name: validate
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Repository checks
+        shell: pwsh
+        run: ./tools/validate.ps1
+
+      # The plugin itself cannot be built here: it references Assembly-CSharp.dll
+      # from a KSP install, which CI does not have. The pure cost model can be.
+      - name: Build pure cost model (offline tool)
+        shell: pwsh
+        run: dotnet build tools/PriceReport/PriceReport.csproj -c Release
