@@ -1,13 +1,18 @@
 namespace ResupplyNetwork
 {
-    /// <summary>
-    /// 难度设置页里的参数节点。
-    ///
-    /// GameParameters.CustomParameterNode 不是特性：KSP 启动时通过
-    /// GameParameters.GenerateParameterTypes() 自动扫描它的子类，不需要手动注册。
-    /// 每项用 [CustomFloatParameterUI] 修饰的公有字段就是一个滑块；
-    /// 标题/tooltip 直接写本地化键，KSP 绘制时会解析（原版也是这么用 #autoLOC 的）。
-    /// </summary>
+    // 难度设置页里的参数节点。
+    //
+    // GameParameters.CustomParameterNode 不是特性：KSP 启动时通过
+    // GameParameters.GenerateParameterTypes() 自动扫描它的子类，不需要手动注册。
+    //
+    // 每个子类 = 左侧列表里的一个独立条目。参数多的时候这是社区通行做法
+    // （CrewLight / KSPWheel / SystemHeat / FFT / DeepFreeze 等都是拆成多个）。
+    // 注意：多个节点若共用同一个 Section，KSP 会把它们横排成多列并塞进同一页，
+    // 还会出现重名条目 —— 所以这里每个节点用各自的 Section 与 DisplaySection。
+    //
+    // 标题/tooltip 直接写本地化键，KSP 绘制时会解析（原版也是这么用 #autoLOC 的）。
+
+    /// <summary>定价：运费、时间与实时参考报价。</summary>
     public class ResupplyGameParams : GameParameters.CustomParameterNode
     {
         [GameParameters.CustomFloatParameterUI("#LOC_RN_P_KMass", toolTip = "#LOC_RN_P_KMassT",
@@ -50,10 +55,30 @@ namespace ResupplyNetwork
             autoPersistance = true, unlockedDuringMission = true)]
         public double TBaseHours = 2.0;
 
+        [GameParameters.CustomStringParameterUI("#LOC_RN_P_Reference", lines = 5)]
+        public string Reference = "";
+
+        public override string Title { get { return "Resupply Network"; } }
+        public override string Section { get { return "RESUPPLY_NETWORK_A"; } }
+        public override string DisplaySection { get { return "#LOC_RN_SecPrice"; } }
+        public override int SectionOrder { get { return 40; } }
+        public override GameParameters.GameMode GameMode { get { return GameParameters.GameMode.ANY; } }
+        public override bool HasPresets { get { return false; } }
+        public override void SetDifficultyPreset(GameParameters.Preset preset) { }
+    }
+
+    /// <summary>退款与加急（含通信链路前置条件）。</summary>
+    public class ResupplyGameParamsOps : GameParameters.CustomParameterNode
+    {
         [GameParameters.CustomFloatParameterUI("#LOC_RN_P_CancelRefund",
             minValue = 0f, maxValue = 1f, stepCount = 100, displayFormat = "P0",
             autoPersistance = true, unlockedDuringMission = true)]
         public double CancelRefund = 0.8;
+
+        [GameParameters.CustomFloatParameterUI("#LOC_RN_P_VesselLostRefund", toolTip = "#LOC_RN_P_VesselLostRefundT",
+            minValue = 0f, maxValue = 1f, stepCount = 100, displayFormat = "P0",
+            autoPersistance = true, unlockedDuringMission = true)]
+        public double VesselLostRefund = 0.5;
 
         [GameParameters.CustomFloatParameterUI("#LOC_RN_P_RushCost", toolTip = "#LOC_RN_P_RushCostT",
             minValue = 1f, maxValue = 10f, stepCount = 180, displayFormat = "N2",
@@ -65,6 +90,22 @@ namespace ResupplyNetwork
             autoPersistance = true, unlockedDuringMission = true)]
         public double RushTimeFactor = 0.4;
 
+        [GameParameters.CustomParameterUI("#LOC_RN_P_RequireComm", toolTip = "#LOC_RN_P_RequireCommT",
+            autoPersistance = true, unlockedDuringMission = true)]
+        public bool RequireCommLink = true;
+
+        public override string Title { get { return "Resupply Network"; } }
+        public override string Section { get { return "RESUPPLY_NETWORK_B"; } }
+        public override string DisplaySection { get { return "#LOC_RN_SecOps"; } }
+        public override int SectionOrder { get { return 41; } }
+        public override GameParameters.GameMode GameMode { get { return GameParameters.GameMode.ANY; } }
+        public override bool HasPresets { get { return false; } }
+        public override void SetDifficultyPreset(GameParameters.Preset preset) { }
+    }
+
+    /// <summary>定时补给的默认值。</summary>
+    public class ResupplyGameParamsAuto : GameParameters.CustomParameterNode
+    {
         [GameParameters.CustomFloatParameterUI("#LOC_RN_P_AutoThreshold",
             minValue = 0f, maxValue = 1f, stepCount = 100, displayFormat = "P0",
             autoPersistance = true, unlockedDuringMission = true)]
@@ -85,23 +126,10 @@ namespace ResupplyNetwork
             addTextField = true, autoPersistance = true, unlockedDuringMission = true)]
         public double AutoMaxFunds = 50000.0;
 
-        [GameParameters.CustomFloatParameterUI("#LOC_RN_P_VesselLostRefund", toolTip = "#LOC_RN_P_VesselLostRefundT",
-            minValue = 0f, maxValue = 1f, stepCount = 100, displayFormat = "P0",
-            autoPersistance = true, unlockedDuringMission = true)]
-        public double VesselLostRefund = 0.5;
-
-        [GameParameters.CustomParameterUI("#LOC_RN_P_RequireComm", toolTip = "#LOC_RN_P_RequireCommT",
-            autoPersistance = true, unlockedDuringMission = true)]
-        public bool RequireCommLink = true;
-
-        /// <summary>只读参考行，由 ApplyGameParams 每次刷新时重算。</summary>
-        [GameParameters.CustomStringParameterUI("#LOC_RN_P_Reference", lines = 5)]
-        public string Reference = "";
-
         public override string Title { get { return "Resupply Network"; } }
-        public override string Section { get { return "RESUPPLY_NETWORK"; } }
-        public override string DisplaySection { get { return "#LOC_RN_SectionTitle"; } }
-        public override int SectionOrder { get { return 40; } }
+        public override string Section { get { return "RESUPPLY_NETWORK_C"; } }
+        public override string DisplaySection { get { return "#LOC_RN_SecAuto"; } }
+        public override int SectionOrder { get { return 42; } }
         public override GameParameters.GameMode GameMode { get { return GameParameters.GameMode.ANY; } }
         public override bool HasPresets { get { return false; } }
         public override void SetDifficultyPreset(GameParameters.Preset preset) { }

@@ -51,6 +51,12 @@ namespace ResupplyNetwork
         private bool _layoutDirty;
         private float _lastLayoutSave;
 
+        // 四个分区的高度权重（相对窗口高度）。拖动分隔条只在相邻两个之间转移权重，
+        // 总和不变 —— 所以各区能单独放大缩小，但永远撑不出窗口。
+        private readonly float[] _secW = { 0.22f, 0.19f, 0.14f, 0.14f };
+        private const float MinSecWeight = 0.05f;
+        private int _dragSplitter = -1;
+
         private static readonly HashSet<VesselType> SkippedTypes = new HashSet<VesselType>
         {
             VesselType.Debris, VesselType.Flag, VesselType.EVA,
@@ -84,6 +90,7 @@ namespace ResupplyNetwork
             {
                 WindowLayout.Load("main", ref _rect, MinW, MinH, MaxW, MaxH);
                 WindowLayout.Load("rules", ref _rulesRect, MinW, MinH, MaxW, MaxH);
+                WindowLayout.LoadFloats("sections", _secW);
                 _layoutLoaded = true;
             }
             _visible = v;
@@ -116,6 +123,7 @@ namespace ResupplyNetwork
         {
             WindowLayout.Save("main", _rect);
             WindowLayout.Save("rules", _rulesRect);
+            WindowLayout.SaveFloats("sections", _secW);
             _layoutDirty = false;
         }
 
@@ -157,21 +165,54 @@ namespace ResupplyNetwork
         private void DrawWindow(int id)
         {
             float h = _rect.height;
-            float vesselH = Mathf.Max(210f, h * 0.22f);
-            float resourceH = Mathf.Max(170f, h * 0.19f);
-            float cartH = Mathf.Max(110f, h * 0.14f);
-            float pendingH = Mathf.Max(110f, h * 0.14f);
-
             GUILayout.BeginVertical();
-            DrawVesselSection(vesselH);
-            DrawResourceSection(resourceH);
-            DrawCartSection(cartH);
-            DrawPendingSection(pendingH);
+            DrawVesselSection(h * _secW[0]);
+            DrawSplitter(0, h);
+            DrawResourceSection(h * _secW[1]);
+            DrawSplitter(1, h);
+            DrawCartSection(h * _secW[2]);
+            DrawSplitter(2, h);
+            DrawPendingSection(h * _secW[3]);
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(Loc.T("#LOC_RN_Close"), GUILayout.Width(90f))) SetVisible(false);
             if (!string.IsNullOrEmpty(_status)) GUILayout.Label(_status);
+            GUILayout.EndHorizontal();
             GUILayout.EndVertical();
 
             GUI.DragWindow(new Rect(0f, 0f, 10000f, 22f));
             DrawResizeGrip();
+        }
+
+        /// <summary>
+        /// 分区之间的分隔条。拖动时把权重从下面那区转移到上面那区（反之亦然），
+        /// 两者之和不变，因此四个区的总高度恒定，永远不会超出窗口。
+        /// </summary>
+        private void DrawSplitter(int index, float h)
+        {
+            Rect r = GUILayoutUtility.GetRect(0f, 7f, GUILayout.ExpandWidth(true));
+            if (Event.current.type == EventType.Repaint)
+                GUI.DrawTexture(r, Texture2D.whiteTexture, ScaleMode.StretchToFill, false, 0f,
+                                new Color(1f, 1f, 1f, 0.10f), 0f, 0f);
+
+            if (r.Contains(Event.current.mousePosition))
+            {
+                if (Event.current.type == EventType.MouseDown) { _dragSplitter = index; Event.current.Use(); }
+            }
+            if (_dragSplitter == index && Event.current.type == EventType.MouseDrag)
+            {
+                float delta = Event.current.delta.y / h;
+                float upper = _secW[index] + delta;
+                float lower = _secW[index + 1] - delta;
+                if (upper >= MinSecWeight && lower >= MinSecWeight)
+                {
+                    _secW[index] = upper;
+                    _secW[index + 1] = lower;
+                    _layoutDirty = true;
+                }
+                Event.current.Use();
+            }
+            if (Event.current.type == EventType.MouseUp) _dragSplitter = -1;
         }
 
         private void DrawResizeGrip()
@@ -234,13 +275,15 @@ namespace ResupplyNetwork
             GUILayout.Label(Loc.T("#LOC_RN_Filter_Body"), GUILayout.Width(40f));
             _bodyScroll = GUILayout.BeginScrollView(_bodyScroll, false, false, GUILayout.Height(26f));
             GUILayout.BeginHorizontal();
-            if (GUILayout.Toggle(_bodyFilter == null, Loc.T("#LOC_RN_Filter_All"), GUILayout.Width(64f)) != (_bodyFilter == null))
+            // 不设固定宽度：天体名和类型名长度差很大（DeployedScienceController 这种），
+            // 写死宽度会让文字溢出、互相盖住。交给自适应，横向滚动条负责容纳。
+            if (GUILayout.Toggle(_bodyFilter == null, Loc.T("#LOC_RN_Filter_All")) != (_bodyFilter == null))
                 _bodyFilter = null;
             for (int i = 0; i < bodyKeys.Count; i++)
             {
                 string key = bodyKeys[i];
                 bool on = _bodyFilter == key;
-                if (GUILayout.Toggle(on, bodyLabels[key], GUILayout.Width(96f)) != on) _bodyFilter = key;
+                if (GUILayout.Toggle(on, bodyLabels[key]) != on) _bodyFilter = key;
             }
             GUILayout.EndHorizontal();
             GUILayout.EndScrollView();
@@ -250,12 +293,12 @@ namespace ResupplyNetwork
             GUILayout.Label(Loc.T("#LOC_RN_Filter_Type"), GUILayout.Width(40f));
             _typeScroll = GUILayout.BeginScrollView(_typeScroll, false, false, GUILayout.Height(26f));
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(Loc.T("#LOC_RN_Filter_All"), GUILayout.Width(64f))) _typeFilter.Clear();
+            if (GUILayout.Button(Loc.T("#LOC_RN_Filter_All"))) _typeFilter.Clear();
             for (int i = 0; i < typeKeys.Count; i++)
             {
                 VesselType t = typeKeys[i];
                 bool on = _typeFilter.Contains(t);
-                if (GUILayout.Toggle(on, VesselTypeLabel(t), GUILayout.Width(96f)) != on)
+                if (GUILayout.Toggle(on, VesselTypeLabel(t)) != on)
                 {
                     if (on) _typeFilter.Remove(t);
                     else _typeFilter.Add(t);
@@ -449,7 +492,10 @@ namespace ResupplyNetwork
                             + (q.AnyCapped ? "   ⚠ " + Loc.T("#LOC_RN_Capped") : string.Empty));
 
             bool hasQueue = ResupplyQueue.Instance != null;
-            bool hasFunds = Funding.Instance != null && Funding.Instance.Funds >= q.Total;
+            // 沙盒/任务存档没有 Funding 模块，Funding.Instance 为 null ——
+            // 那种情况下不扣款也不拦截，否则根本没法下单。
+            bool noEconomy = Funding.Instance == null;
+            bool hasFunds = noEconomy || Funding.Instance.Funds >= q.Total;
 
             GUILayout.BeginHorizontal();
             GUI.enabled = hasQueue && hasFunds;
@@ -462,6 +508,7 @@ namespace ResupplyNetwork
             GUI.enabled = true;
             if (GUILayout.Button(Loc.T("#LOC_RN_ClearCart"), GUILayout.Width(110f))) _cart.Clear();
             GUILayout.EndHorizontal();
+            if (noEconomy) GUILayout.Label(Loc.T("#LOC_RN_NoEconomy"));
         }
 
         private void DrawPendingSection(float height)
@@ -606,7 +653,7 @@ namespace ResupplyNetwork
         {
             try
             {
-                Funding.Instance.AddFunds(-q.Total, TransactionReasons.None);
+                if (Funding.Instance != null) Funding.Instance.AddFunds(-q.Total, TransactionReasons.None);
                 ResupplyQueue.Instance.Enqueue(v, q);
                 _status = Loc.T("#LOC_RN_OrderPlaced", q.Lines.Count, q.TotalMass.ToString("N3") + " t",
                                 CostCore.FormatDuration(q.LeadTime));
@@ -765,6 +812,11 @@ namespace ResupplyNetwork
             if (body == null) return "?";
             string name = body.displayName;
             if (string.IsNullOrEmpty(name)) name = body.bodyName;
+            // KSP 的天体显示名带转义后缀（字典里是 "Minmus^N"），直接把原串画出来会多出 ^N。
+            int caret = name.IndexOf('^');
+            if (caret >= 0) name = name.Substring(0, caret);
+            name = name.Trim();
+            if (name.Length == 0) name = body.bodyName;
             return name;
         }
 
@@ -780,6 +832,9 @@ namespace ResupplyNetwork
                 case VesselType.Base: return Loc.T("#LOC_RN_VT_Base");
                 case VesselType.Plane: return Loc.T("#LOC_RN_VT_Plane");
                 case VesselType.Relay: return Loc.T("#LOC_RN_VT_Relay");
+                case VesselType.DeployedScienceController: return Loc.T("#LOC_RN_VT_ScienceCtrl");
+                case VesselType.DeployedSciencePart: return Loc.T("#LOC_RN_VT_SciencePart");
+                case VesselType.DeployedGroundPart: return Loc.T("#LOC_RN_VT_GroundPart");
                 default: return t.ToString();
             }
         }

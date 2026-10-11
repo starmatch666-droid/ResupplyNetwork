@@ -484,14 +484,15 @@ namespace ResupplyNetwork
                                           q.Total.ToString("N0")));
                         continue;
                     }
-                    if (Funding.Instance == null || Funding.Instance.Funds < q.Total)
+                    // 没有资金系统的存档（沙盒/任务）不拦、也不扣款
+                    if (Funding.Instance != null && Funding.Instance.Funds < q.Total)
                     {
                         Debug.Log("[ResupplyNetwork] " + Loc.T("#LOC_RN_Msg_AutoSkipFunds",
                                           q.Total.ToString("N0"), ResourceCatalog.DisplayName(r.Resource)));
                         continue;
                     }
 
-                    Funding.Instance.AddFunds(-q.Total, TransactionReasons.None);
+                    if (Funding.Instance != null) Funding.Instance.AddFunds(-q.Total, TransactionReasons.None);
                     Enqueue(v, q);
 
                     double pct = capacity > 0.0 ? current / capacity * 100.0 : 0.0;

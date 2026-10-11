@@ -8,18 +8,22 @@ namespace ResupplyNetwork
     /// </summary>
     public static class Loc
     {
-        public static string T(string key)
-        {
-            if (string.IsNullOrEmpty(key)) return string.Empty;
-            string s = Localizer.Format(key);
-            return string.IsNullOrEmpty(s) ? key : s;
-        }
-
         public static string T(string key, params object[] args)
         {
-            string fmt = T(key);
-            try { return string.Format(fmt, args); }
-            catch { return fmt; }
+            if (string.IsNullOrEmpty(key)) return string.Empty;
+            // 注意：本地化文件里的占位符必须写成 KSP 原生的 <<1>> <<2>>（1 起），
+            // 不能用 {0} —— 原版字典里一个 {0} 都没有，KSP 遇到 '{' 会把后面整段丢掉。
+            bool hasArgs = args != null && args.Length > 0;
+            string s;
+            try
+            {
+                s = hasArgs ? Localizer.Format(key, args) : Localizer.Format(key);
+            }
+            catch
+            {
+                return key;
+            }
+            return string.IsNullOrEmpty(s) ? key : s;
         }
     }
 }

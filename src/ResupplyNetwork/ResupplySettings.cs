@@ -110,30 +110,45 @@ namespace ResupplyNetwork
             try
             {
                 if (HighLogic.CurrentGame == null) return;
-                ResupplyGameParams gp = HighLogic.CurrentGame.Parameters.CustomParams<ResupplyGameParams>();
-                if (gp == null) return;
-
+                GameParameters parms = HighLogic.CurrentGame.Parameters;
                 ResupplySettings s = Instance;
-                s.KMass = gp.KMass;
-                s.DvRef = gp.DvRef;
-                s.KTime = gp.KTime;
-                s.KPremium = gp.KPremium;
-                s.BTrip = gp.BTrip;
-                s.STrip = gp.STrip;
-                s.SMin = gp.SMin;
-                s.TBase = gp.TBaseHours * 3600.0;
-                s.CancelRefund = gp.CancelRefund;
-                s.AutoThreshold = gp.AutoThreshold;
-                s.AutoTarget = gp.AutoTarget;
-                s.AutoIntervalDays = gp.AutoIntervalDays;
-                s.AutoMaxFunds = gp.AutoMaxFunds;
-                s.RushCostMultiplier = gp.RushCostMultiplier;
-                s.RushTimeFactor = gp.RushTimeFactor;
-                s.RequireCommLink = gp.RequireCommLink;
-                s.VesselLostRefund = gp.VesselLostRefund;
 
-                // 实时刷新设置页上的参考报价（用的是同一套 CostCore 公式）
-                gp.Reference = ReferenceQuote.Build();
+                // 定价页（参考报价挂在这里）
+                ResupplyGameParams price = parms.CustomParams<ResupplyGameParams>();
+                if (price != null)
+                {
+                    s.KMass = price.KMass;
+                    s.DvRef = price.DvRef;
+                    s.KTime = price.KTime;
+                    s.KPremium = price.KPremium;
+                    s.BTrip = price.BTrip;
+                    s.STrip = price.STrip;
+                    s.SMin = price.SMin;
+                    s.TBase = price.TBaseHours * 3600.0;
+                    // 实时刷新参考报价（用的是同一套 CostCore 公式）
+                    price.Reference = ReferenceQuote.Build();
+                }
+
+                // 退款与加急页
+                ResupplyGameParamsOps ops = parms.CustomParams<ResupplyGameParamsOps>();
+                if (ops != null)
+                {
+                    s.CancelRefund = ops.CancelRefund;
+                    s.VesselLostRefund = ops.VesselLostRefund;
+                    s.RushCostMultiplier = ops.RushCostMultiplier;
+                    s.RushTimeFactor = ops.RushTimeFactor;
+                    s.RequireCommLink = ops.RequireCommLink;
+                }
+
+                // 定时补给页
+                ResupplyGameParamsAuto auto = parms.CustomParams<ResupplyGameParamsAuto>();
+                if (auto != null)
+                {
+                    s.AutoThreshold = auto.AutoThreshold;
+                    s.AutoTarget = auto.AutoTarget;
+                    s.AutoIntervalDays = auto.AutoIntervalDays;
+                    s.AutoMaxFunds = auto.AutoMaxFunds;
+                }
             }
             catch (System.Exception e)
             {
