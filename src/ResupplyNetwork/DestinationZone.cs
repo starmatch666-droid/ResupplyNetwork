@@ -33,7 +33,11 @@ namespace ResupplyNetwork
                 dz.Name = bodyName + "/" + sit;
                 dz.DvPark = z.Dv;
                 dz.TransferTime = z.TransferTime;
-                dz.FreightRate = z.HasRate ? z.Rate : RateFrom(z.Dv, z.TransferTime);
+                // 写死 rate 的优先；否则按公式算，再乘上该目的地的倍率（默认 1.0）。
+                // 这样难度设置页拖动系数时，未写死 rate 的目的地会实时跟着变。
+                dz.FreightRate = z.HasRate
+                    ? z.Rate
+                    : RateFrom(z.Dv, z.TransferTime) * z.RateMultiplier;
                 dz.IsOverride = true;
                 return dz;
             }

@@ -14,6 +14,7 @@ namespace ResupplyNetwork
         public double TransferTime;
         public double Rate;
         public bool HasRate;
+        public double RateMultiplier = 1.0;
     }
 
     /// <summary>跨恒星系 / 虫洞路线覆盖项。</summary>
@@ -93,6 +94,65 @@ namespace ResupplyNetwork
             _instance = s;
         }
 
+        /// <summary>
+        /// 如果当前存档在难度设置页里存了参数，用它们覆盖 cfg 里的标量值。
+        /// 优先级：存档的难度设置 &gt; cfg。cfg 仍然是默认层（新存档的初值，也是离线工具读取的来源）。
+        /// 列表类配置（稀缺溢价、排除表、目的地覆盖）只在 cfg 里，不受这里影响。
+        /// </summary>
+        public static void ApplyGameParams()
+        {
+            try
+            {
+                if (HighLogic.CurrentGame == null) return;
+                ResupplyGameParams gp = HighLogic.CurrentGame.Parameters.CustomParams<ResupplyGameParams>();
+                if (gp == null) return;
+
+                ResupplySettings s = Instance;
+                s.KMass = gp.KMass;
+                s.DvRef = gp.DvRef;
+                s.KTime = gp.KTime;
+                s.KPremium = gp.KPremium;
+                s.BTrip = gp.BTrip;
+                s.STrip = gp.STrip;
+                s.SMin = gp.SMin;
+                s.TBase = gp.TBaseHours * 3600.0;
+                s.CancelRefund = gp.CancelRefund;
+                s.AutoThreshold = gp.AutoThreshold;
+                s.AutoTarget = gp.AutoTarget;
+                s.AutoIntervalDays = gp.AutoIntervalDays;
+                s.AutoMaxFunds = gp.AutoMaxFunds;
+
+                // 实时刷新设置页上的参考报价（用的是同一套 CostCore 公式）
+                gp.Reference = ReferenceQuote.Build();
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[ResupplyNetwork] 读取难度设置失败，继续用 cfg 默认值: " + e.Message);
+            }
+        }
+
+        /// <summary>
+        /// 用母星的**实际轨道周期**刷新"年"的长度。
+        /// 硬编码的 1 年只作为兜底：Kcalbeloh 之类带 HomeSwitch 的行星包会把母星换掉，
+        /// 那时"1 年"就不是 Kerbin 的 426 天了。
+        /// "天"保持 21600 秒不变，因为游戏内时钟就是这么走的。
+        /// </summary>
+        public static void RefreshTimeUnits()
+        {
+            CostCore.KerbinDay = CostCore.DefaultKerbinDay;
+            CostCore.KerbinYear = CostCore.DefaultKerbinYear;
+            try
+            {
+                CelestialBody home = Planetarium.fetch != null ? Planetarium.fetch.Home : null;
+                if (home != null && home.orbit != null && home.orbit.period > 0.0)
+                    CostCore.KerbinYear = home.orbit.period;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[ResupplyNetwork] 读取母星轨道周期失败，用默认 1 年: " + e.Message);
+            }
+        }
+
         private void Parse(ConfigNode n)
         {
             KMass = GetD(n, "K_mass", KMass);
@@ -138,6 +198,7 @@ namespace ResupplyNetwork
                 z.TransferTime = GetD(c, "transferTime", TBase);
                 string rate = c.GetValue("rate");
                 if (!string.IsNullOrEmpty(rate)) { z.Rate = GetD(c, "rate", 0.0); z.HasRate = true; }
+                z.RateMultiplier = GetD(c, "rateMultiplier", 1.0);
                 Zones.Add(z);
             }
             foreach (var c in n.GetNodes("ROUTE_OVERRIDE"))

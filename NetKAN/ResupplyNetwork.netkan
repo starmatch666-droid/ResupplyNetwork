@@ -4,7 +4,8 @@ abstract: Pay funds and wait for deliveries - resupply any of your vessels with 
 $kref: '#/ckan/github/starmatch666-droid/ResupplyNetwork'
 $vref: '#/ckan/ksp-avc'
 license: MIT
-author: Cyber1j1e
+author:
+  - Cyber1j1e
 tags:
   - plugin
   - convenience

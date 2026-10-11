@@ -12,6 +12,7 @@ namespace ResupplyNetwork
     public class ResupplyBootstrap : MonoBehaviour
     {
         private bool _buttonCreated;
+        private float _lastParamsApply;
 
         private void Awake()
         {
@@ -27,6 +28,14 @@ namespace ResupplyNetwork
 
         private void Update()
         {
+            // 难度设置页的值优先于 cfg；用 0.5 秒节流，避免每帧都做反射查询
+            if (Time.realtimeSinceStartup - _lastParamsApply > 0.5f)
+            {
+                _lastParamsApply = Time.realtimeSinceStartup;
+                ResupplySettings.RefreshTimeUnits();
+                if (HighLogic.CurrentGame != null) ResupplySettings.ApplyGameParams();
+            }
+
             // 交付队列除了自身 Update，也由这个常驻对象驱动一次（幂等），
             // 避免依赖 ScenarioModule 的 Update 是否被 KSP 调用。
             if (ResupplyQueue.Instance != null) ResupplyQueue.Instance.ProcessPending();

@@ -18,6 +18,24 @@ namespace ResupplyNetwork
             return ResupplySettings.Instance.Excluded.Contains(resource);
         }
 
+        /// <summary>
+        /// 本地化显示名。KSP 会把 RESOURCE_DEFINITION 里的 displayName 解析成本地语言
+        /// （原版走 #autoLOC，CommunityResourcePack 等 mod 走自己的 Localization/*.cfg）。
+        /// 解析失败或为空时回退到内部名——内部名是订单、存档与规则的唯一键，绝不能改。
+        /// </summary>
+        public static string DisplayName(string resource)
+        {
+            if (string.IsNullOrEmpty(resource)) return string.Empty;
+            PartResourceDefinition def = Definition(resource);
+            if (def != null)
+            {
+                string dn = def.displayName;
+                if (!string.IsNullOrEmpty(dn) && !dn.StartsWith("#", System.StringComparison.Ordinal))
+                    return dn;
+            }
+            return resource;
+        }
+
         /// <summary>单价（资金/单位）= unitCost * 稀缺倍数，或人工覆盖价；不低于最低单价。</summary>
         public static double UnitPrice(string resource, PartResourceDefinition def)
         {

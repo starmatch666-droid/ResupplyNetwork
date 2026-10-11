@@ -19,6 +19,11 @@ Think commercial resupply flights to a station.
   Future Technologies, CryoEngines, USI, KerbalAtomics, ...) work automatically.
 * **Scarcity multipliers and an exclusion list** for resources you do not want to
   sell (abstract resources, atmospheric intakes, ...).
+* **Difficulty settings page** - every coefficient is a slider in the game's
+  difficulty options, with a live reference quote showing what a full 2.5 m tank
+  costs and how long it takes, so you can see the effect while you drag.
+* **Localized resource names** - resources are shown in your game's language.
+* **Amount slider** - choose how much to inject as a percentage, or type an exact number.
 
 ## Requirements
 
@@ -71,10 +76,13 @@ MIT
 ## 功能
 
 * **按需下单** - 选航天器、选资源、加入清单，看报价与交付时间，下单；一笔订单可含多种物资
-* **定时补给** - 每 N 天检查一次余量，低于阈值线才发船，补到目标水位，模拟真实的补给班期
+* **定时补给** - 每 N 天检查一次余量，低于阈值才发船，补到补充目标，模拟真实的补给班期
 * **成本由真实轨道数据算出** - 运费随目的地 Δv 与转移时间变化，自动适配任意行星包，不硬编码天体
 * **支持全部资源** - 直接从游戏自身的 `PartResourceDefinition` 读价格与密度，mod 资源自动生效
 * **稀缺溢价与排除表** - 抽象/环境类资源可排除；反物质、核燃料之类可设溢价
+* **难度设置页** - 所有系数都是游戏难度选项里的滑块，并实时显示"加满一个 2.5m 油罐要多少钱、多久"作为参考
+* **资源名本地化** - 按游戏语言显示资源名
+* **数量滑块** - 按百分比选取注入量，也可以直接输入精确值
 
 ## 依赖
 

@@ -5,7 +5,7 @@
     <LangVersion>9.0</LangVersion>
     <AssemblyName>ResupplyNetwork</AssemblyName>
     <RootNamespace>ResupplyNetwork</RootNamespace>
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Product>Resupply Network</Product>
     <DebugType>none</DebugType>
     <Deterministic>true</Deterministic>

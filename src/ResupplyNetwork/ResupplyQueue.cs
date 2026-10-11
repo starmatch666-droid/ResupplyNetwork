@@ -291,7 +291,7 @@ namespace ResupplyNetwork
                     var it = d.Items[j];
                     double added = VesselResources.Add(v, it.Resource, it.Amount);
                     if (sb.Length > 0) sb.Append("，");
-                    sb.Append(it.Resource).Append(" +").Append(added.ToString("N1"));
+                    sb.Append(ResourceCatalog.DisplayName(it.Resource)).Append(" +").Append(added.ToString("N1"));
                 }
                 Pending.RemoveAt(i);
 
@@ -374,7 +374,8 @@ namespace ResupplyNetwork
                 if (v == null)
                 {
                     r.Enabled = false;
-                    Debug.LogWarning("[ResupplyNetwork] 定时补给规则的目标舰船已不存在，已停用: " + r.Resource);
+                    Debug.LogWarning("[ResupplyNetwork] 定时补给规则的目标舰船已不存在，已停用: "
+                                     + ResourceCatalog.DisplayName(r.Resource));
                     continue;
                 }
 
@@ -391,7 +392,8 @@ namespace ResupplyNetwork
                         double endurance = perSecond > 0.0 ? current / perSecond : double.MaxValue;
                         if (endurance < r.Interval)
                         {
-                            Debug.LogWarning("[ResupplyNetwork] 班期可能过长: " + v.vesselName + " · " + r.Resource
+                            Debug.LogWarning("[ResupplyNetwork] 班期可能过长: " + v.vesselName + " · "
+                                             + ResourceCatalog.DisplayName(r.Resource)
                                              + " 按当前消耗约 " + CostCore.FormatDuration(endurance)
                                              + " 就会耗尽，但班期是 " + r.IntervalDays + " 天，可能在到货前断货");
                         }
@@ -416,12 +418,13 @@ namespace ResupplyNetwork
                 if (r.Budget > 0.0 && q.Total > r.Budget)
                 {
                     Debug.Log("[ResupplyNetwork] 定时补给跳过（超出单笔预算 " + r.Budget.ToString("N0")
-                              + "，需要 " + q.Total.ToString("N0") + "）: " + r.Resource);
+                              + "，需要 " + q.Total.ToString("N0") + "）: " + ResourceCatalog.DisplayName(r.Resource));
                     continue;
                 }
                 if (Funding.Instance == null || Funding.Instance.Funds < q.Total)
                 {
-                    Debug.Log("[ResupplyNetwork] 定时补给跳过（资金不足 " + q.Total.ToString("N0") + "）: " + r.Resource);
+                    Debug.Log("[ResupplyNetwork] 定时补给跳过（资金不足 " + q.Total.ToString("N0") + "）: "
+                              + ResourceCatalog.DisplayName(r.Resource));
                     continue;
                 }
 
@@ -429,7 +432,8 @@ namespace ResupplyNetwork
                 Enqueue(v, q);
 
                 double pct = capacity > 0.0 ? current / capacity * 100.0 : 0.0;
-                string msg = "定时补给已下单: " + v.vesselName + " " + r.Resource + " +" + need.ToString("N0")
+                string msg = "定时补给已下单: " + v.vesselName + " " + ResourceCatalog.DisplayName(r.Resource)
+                             + " +" + need.ToString("N0")
                              + "（触发时余量 " + pct.ToString("N0") + "%）";
                 Debug.Log("[ResupplyNetwork] " + msg + "，花费 " + q.Total.ToString("N0"));
                 ScreenMessages.PostScreenMessage(msg, 6f, ScreenMessageStyle.UPPER_CENTER);

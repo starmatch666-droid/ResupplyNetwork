@@ -332,7 +332,7 @@ namespace ResupplyNetwork
                     double amount = VesselResources.GetAmount(v, name);
                     double free = VesselResources.GetFreeCapacity(v, name);
                     string tail = ResourceCatalog.IsExcluded(name) ? "   [排除]" : "";
-                    string label = name + "   " + amount.ToString("N0") + " / "
+                    string label = ResourceCatalog.DisplayName(name) + "   " + amount.ToString("N0") + " / "
                                    + (amount + free).ToString("N0") + "   可注入 " + free.ToString("N0") + tail;
 
                     bool selected = name == _resource;
@@ -346,12 +346,26 @@ namespace ResupplyNetwork
             }
             GUILayout.EndScrollView();
 
+            // 滑块按“容器剩余容量”的百分比走，0-100%；旁边的输入框保留精确输入
+            double freeCap = string.IsNullOrEmpty(_resource) ? 0.0 : VesselResources.GetFreeCapacity(v, _resource);
+            double typed;
+            if (!double.TryParse(_amountText, out typed) || typed < 0.0) typed = 0.0;
+
             GUILayout.BeginHorizontal();
             GUILayout.Label("数量", GUILayout.Width(40f));
-            _amountText = GUILayout.TextField(_amountText, GUILayout.Width(150f));
-            if (GUILayout.Button("25%", GUILayout.Width(56f))) SetAmountFraction(v, 0.25);
-            if (GUILayout.Button("50%", GUILayout.Width(56f))) SetAmountFraction(v, 0.50);
-            if (GUILayout.Button("满", GUILayout.Width(80f))) SetAmountFraction(v, 1.0);
+
+            float pctIn = freeCap > 0.0 ? (float)Math.Min(1.0, Math.Max(0.0, typed / freeCap)) : 0f;
+            float pctOut = GUILayout.HorizontalSlider(pctIn, 0f, 1f, GUILayout.MinWidth(180f));
+            if (Math.Abs(pctOut - pctIn) > 0.0005f)
+                _amountText = Math.Floor(freeCap * pctOut).ToString("F0");
+            GUILayout.Label((pctOut * 100f).ToString("N0") + "%", GUILayout.Width(46f));
+
+            _amountText = GUILayout.TextField(_amountText, GUILayout.Width(110f));
+            GUILayout.Label("/ " + freeCap.ToString("N0"), GUILayout.Width(110f));
+
+            if (GUILayout.Button("25%", GUILayout.Width(50f))) SetAmountFraction(v, 0.25);
+            if (GUILayout.Button("50%", GUILayout.Width(50f))) SetAmountFraction(v, 0.50);
+            if (GUILayout.Button("满", GUILayout.Width(46f))) SetAmountFraction(v, 1.0);
 
             GUI.enabled = !string.IsNullOrEmpty(_resource);
             if (GUILayout.Button("加入清单", GUILayout.Width(110f))) AddToCart();
@@ -373,7 +387,7 @@ namespace ResupplyNetwork
             {
                 var c = _cart[i];
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(c.Resource + "   " + c.Amount.ToString("N0"), GUILayout.Width(320f));
+                GUILayout.Label(ResourceCatalog.DisplayName(c.Resource) + "   " + c.Amount.ToString("N0"), GUILayout.Width(320f));
                 if (GUILayout.Button("移除", GUILayout.Width(70f))) _cart.RemoveAt(i);
                 GUILayout.EndHorizontal();
             }
@@ -454,7 +468,7 @@ namespace ResupplyNetwork
                     for (int j = 0; j < d.Items.Count; j++)
                     {
                         if (sb.Length > 0) sb.Append("，");
-                        sb.Append(d.Items[j].Resource).Append(" ").Append(d.Items[j].Amount.ToString("N0"));
+                        sb.Append(ResourceCatalog.DisplayName(d.Items[j].Resource)).Append(" ").Append(d.Items[j].Amount.ToString("N0"));
                     }
                     _status = "订单明细: " + sb;
                 }
@@ -504,7 +518,7 @@ namespace ResupplyNetwork
             if (string.IsNullOrEmpty(_resource)) return;
             if (ResourceCatalog.IsExcluded(_resource))
             {
-                _status = "\"" + _resource + "\" 在排除表里，不能补给";
+                _status = "\"" + ResourceCatalog.DisplayName(_resource) + "\" 在排除表里，不能补给";
                 return;
             }
 
@@ -520,13 +534,13 @@ namespace ResupplyNetwork
                 if (_cart[i].Resource == _resource)
                 {
                     _cart[i].Amount = amount;
-                    _status = "已更新清单中的 " + _resource;
+                    _status = "已更新清单中的 " + ResourceCatalog.DisplayName(_resource);
                     return;
                 }
             }
 
             _cart.Add(new CartItem { Resource = _resource, Amount = amount });
-            _status = "已加入清单: " + _resource + " " + amount.ToString("N0");
+            _status = "已加入清单: " + ResourceCatalog.DisplayName(_resource) + " " + amount.ToString("N0");
         }
 
         private void PlaceOrder(Vessel v, MultiQuote q)
@@ -570,7 +584,8 @@ namespace ResupplyNetwork
             string res = _resource;
             GUILayout.Label(v == null
                 ? "目标: （主窗口里还没选航天器）"
-                : "目标: " + v.vesselName + "    资源: " + (string.IsNullOrEmpty(res) ? "（未选）" : res));
+                : "目标: " + v.vesselName + "    资源: "
+                  + (string.IsNullOrEmpty(res) ? "（未选）" : ResourceCatalog.DisplayName(res)));
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("阈值 %", GUILayout.Width(48f));
@@ -617,7 +632,7 @@ namespace ResupplyNetwork
                     }
 
                     string desc = (string.IsNullOrEmpty(r.VesselName) ? "(未知)" : r.VesselName)
-                                  + " · " + r.Resource
+                                  + " · " + ResourceCatalog.DisplayName(r.Resource)
                                   + " · 低于 " + (r.Threshold * 100.0).ToString("N0")
                                   + "% 补到 " + (r.Target * 100.0).ToString("N0") + "%"
                                   + " · 每 " + r.IntervalDays + " 天"
@@ -645,7 +660,7 @@ namespace ResupplyNetwork
             if (v == null || string.IsNullOrEmpty(resource)) return;
             if (ResourceCatalog.IsExcluded(resource))
             {
-                _status = "\"" + resource + "\" 在排除表里，不能建定时补给规则";
+                _status = "\"" + ResourceCatalog.DisplayName(resource) + "\" 在排除表里，不能建定时补给规则";
                 return;
             }
 
@@ -667,7 +682,7 @@ namespace ResupplyNetwork
 
             ResupplyQueue.Instance.AddRule(v, resource, threshold, target,
                                            days * CostCore.KerbinDay, budget);
-            _status = "已保存规则: " + v.vesselName + " · " + resource
+            _status = "已保存规则: " + v.vesselName + " · " + ResourceCatalog.DisplayName(resource)
                       + "（低于 " + (threshold * 100.0).ToString("N0")
                       + "% 补到 " + (target * 100.0).ToString("N0")
                       + "%，每 " + days.ToString("0.##") + " 天检查）";

@@ -77,8 +77,15 @@ namespace ResupplyNetwork
     /// </summary>
     public static class CostCore
     {
-        public const double KerbinDay = 21600.0;
-        public const double KerbinYear = 9203328.0;
+        // KSP 的 1 天 = 6 小时 = 21600 秒（不是 24 小时），游戏内时钟就是按这个走的。
+        public const double DefaultKerbinDay = 21600.0;
+        // 1 年 = 426 日 0 时 32 分 24.6 秒（由 Kerbin 轨道开普勒第三定律算出，不是 365 天）。
+        public const double DefaultKerbinYear = 9203544.6;
+
+        // 运行时可被母星的轨道周期覆盖（见 ResupplySettings.RefreshTimeUnits），
+        // 这样 Kcalbeloh 那种能把母星换掉的行星包也不会算错时间加价。
+        public static double KerbinDay = DefaultKerbinDay;
+        public static double KerbinYear = DefaultKerbinYear;
 
         /// <summary>
         /// 一次订单可包含任意多种物资：运费按总质量算，服务费与趟数按总质量算，

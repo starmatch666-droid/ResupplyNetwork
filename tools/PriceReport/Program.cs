@@ -358,13 +358,13 @@ namespace ResupplyNetwork.Tools
             }
 
             Console.WriteLine();
-            Console.WriteLine("    [" + title + "] " + totalDays + " 天内发船 " + orders.Count + " 次，最低水位 "
+            Console.WriteLine("    [" + title + "] " + totalDays + " 天内发船 " + orders.Count + " 次，最低余量 "
                               + (minLevel / capacity * 100.0).ToString("N0") + "%"
                               + (minLevel <= 0.0 ? "   ← 断货了" : ""));
             for (int i = 0; i < orders.Count; i++)
             {
                 var o = orders[i];
-                Console.WriteLine("        第 " + o.OrderDay.ToString("N0").PadLeft(4) + " 天下单，触发时水位 "
+                Console.WriteLine("        第 " + o.OrderDay.ToString("N0").PadLeft(4) + " 天下单，触发时余量 "
                                   + (o.LevelAtTrigger / capacity * 100.0).ToString("N0").PadLeft(3) + "%"
                                   + "，补 " + o.Amount.ToString("N0").PadLeft(5)
                                   + "，第 " + o.ArriveDay.ToString("N0").PadLeft(4) + " 天到货");
