@@ -58,7 +58,9 @@ namespace ResupplyNetwork
         [GameParameters.CustomStringParameterUI("#LOC_RN_P_Reference", lines = 5)]
         public string Reference = "";
 
-        public override string Title { get { return "Resupply Network"; } }
+        // Title 是页内那块绿色标题，同样会被当成本地化键解析（截图里已确认过），
+        // 所以跟 DisplaySection 用同一套键，页面标题和左侧条目名才对得上。
+        public override string Title { get { return "#LOC_RN_SecPrice"; } }
         public override string Section { get { return "RESUPPLY_NETWORK_A"; } }
         public override string DisplaySection { get { return "#LOC_RN_SecPrice"; } }
         public override int SectionOrder { get { return 40; } }
@@ -94,7 +96,7 @@ namespace ResupplyNetwork
             autoPersistance = true, unlockedDuringMission = true)]
         public bool RequireCommLink = true;
 
-        public override string Title { get { return "Resupply Network"; } }
+        public override string Title { get { return "#LOC_RN_SecOps"; } }
         public override string Section { get { return "RESUPPLY_NETWORK_B"; } }
         public override string DisplaySection { get { return "#LOC_RN_SecOps"; } }
         public override int SectionOrder { get { return 41; } }
@@ -126,7 +128,7 @@ namespace ResupplyNetwork
             addTextField = true, autoPersistance = true, unlockedDuringMission = true)]
         public double AutoMaxFunds = 50000.0;
 
-        public override string Title { get { return "Resupply Network"; } }
+        public override string Title { get { return "#LOC_RN_SecAuto"; } }
         public override string Section { get { return "RESUPPLY_NETWORK_C"; } }
         public override string DisplaySection { get { return "#LOC_RN_SecAuto"; } }
         public override int SectionOrder { get { return 42; } }
