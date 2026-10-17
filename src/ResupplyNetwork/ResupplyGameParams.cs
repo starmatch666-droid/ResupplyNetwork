@@ -136,4 +136,31 @@ namespace ResupplyNetwork
         public override bool HasPresets { get { return false; } }
         public override void SetDifficultyPreset(GameParameters.Preset preset) { }
     }
+
+    /// <summary>殖民地补给：目标天体上若有功能完善的殖民地，改由它作为本地货源。</summary>
+    public class ResupplyGameParamsColony : GameParameters.CustomParameterNode
+    {
+        [GameParameters.CustomParameterUI("#LOC_RN_P_ColonyEnabled", toolTip = "#LOC_RN_P_ColonyEnabledT",
+            autoPersistance = true, unlockedDuringMission = true)]
+        public bool ColonyEnabled = true;
+
+        [GameParameters.CustomIntParameterUI("#LOC_RN_P_ColonyMinCrew",
+            minValue = 0, maxValue = 20, stepSize = 1,
+            autoPersistance = true, unlockedDuringMission = true)]
+        public int ColonyMinCrew = 3;
+
+        [GameParameters.CustomFloatParameterUI("#LOC_RN_P_ColonyFreightFactor",
+            toolTip = "#LOC_RN_P_ColonyFreightFactorT",
+            minValue = 0.1f, maxValue = 3f, stepCount = 58, displayFormat = "N2",
+            autoPersistance = true, unlockedDuringMission = true)]
+        public double ColonyFreightFactor = 1.0;
+
+        public override string Title { get { return "#LOC_RN_SecColony"; } }
+        public override string Section { get { return "RESUPPLY_NETWORK_D"; } }
+        public override string DisplaySection { get { return "#LOC_RN_SecColony"; } }
+        public override int SectionOrder { get { return 43; } }
+        public override GameParameters.GameMode GameMode { get { return GameParameters.GameMode.ANY; } }
+        public override bool HasPresets { get { return false; } }
+        public override void SetDifficultyPreset(GameParameters.Preset preset) { }
+    }
 }

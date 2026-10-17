@@ -29,6 +29,19 @@ namespace ResupplyNetwork
 
             DestinationZone zone = ZoneCalculator.Resolve(vessel);
 
+            // 目标所在天体上若有功能完善的殖民地，改由它发货：本地发射，更便宜也更快
+            SupplyColony colony = ColonyOrigin.FindFor(vessel);
+            double rate = zone.FreightRate;
+            double transfer = zone.TransferTime;
+            string origin = Loc.T("#LOC_RN_Origin_Home");
+            if (colony != null)
+            {
+                rate = ColonyOrigin.FreightRate(colony.Body, s);
+                transfer = ColonyOrigin.LocalTransferTime;
+                origin = Loc.T("#LOC_RN_ColonyName", colony.Vessel.vesselName,
+                               colony.Body.displayName);
+            }
+
             var items = new List<QuoteItem>(cart.Count);
             string lastExcluded = null;
             for (int i = 0; i < cart.Count; i++)
@@ -58,7 +71,7 @@ namespace ResupplyNetwork
             }
 
             MultiQuote q = CostCore.QuoteMulti(
-                items, zone.FreightRate, zone.TransferTime,
+                items, rate, transfer,
                 s.BTrip, s.STrip, s.SMin, s.TBase);
             if (!q.Ok)
             {
@@ -66,6 +79,7 @@ namespace ResupplyNetwork
                 return q;
             }
             q.ZoneName = zone.Name;
+            q.OriginName = origin;
             if (rush) CostCore.ApplyRush(q, s.RushCostMultiplier, s.RushTimeFactor);
             return q;
         }

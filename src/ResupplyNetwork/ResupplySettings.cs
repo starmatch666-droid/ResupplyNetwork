@@ -49,6 +49,10 @@ namespace ResupplyNetwork
         // ---- 前置条件与损失 ----
         public bool RequireCommLink = true;     // 必须有可用通信链路
         public double VesselLostRefund = 0.5;   // 目标舰船损毁时的退款比例
+        // ---- 殖民地补给 ----
+        public bool ColonyEnabled = true;        // 同天体上有合格殖民地时改由它发货
+        public int ColonyMinCrew = 3;            // 殖民地最少乘员
+        public double ColonyFreightFactor = 1.0; // 殖民地运费的额外系数
         public double MinDensity = 0.0001;
         public double MinUnitPrice = 0.01;
         public bool AutoComputeZones = true;
@@ -149,6 +153,15 @@ namespace ResupplyNetwork
                     s.AutoIntervalDays = auto.AutoIntervalDays;
                     s.AutoMaxFunds = auto.AutoMaxFunds;
                 }
+
+                // 殖民地页
+                ResupplyGameParamsColony colony = parms.CustomParams<ResupplyGameParamsColony>();
+                if (colony != null)
+                {
+                    s.ColonyEnabled = colony.ColonyEnabled;
+                    s.ColonyMinCrew = colony.ColonyMinCrew;
+                    s.ColonyFreightFactor = colony.ColonyFreightFactor;
+                }
             }
             catch (System.Exception e)
             {
@@ -198,6 +211,10 @@ namespace ResupplyNetwork
             VesselLostRefund = GetD(n, "vesselLostRefund", VesselLostRefund);
             string comm = n.GetValue("requireCommLink");
             if (!string.IsNullOrEmpty(comm)) RequireCommLink = comm.Trim().ToLowerInvariant() != "false";
+            string ce = n.GetValue("colonyEnabled");
+            if (!string.IsNullOrEmpty(ce)) ColonyEnabled = ce.Trim().ToLowerInvariant() != "false";
+            ColonyMinCrew = (int)GetD(n, "colonyMinCrew", ColonyMinCrew);
+            ColonyFreightFactor = GetD(n, "colonyFreightFactor", ColonyFreightFactor);
             MinDensity = GetD(n, "minDensity", MinDensity);
             MinUnitPrice = GetD(n, "minUnitPrice", MinUnitPrice);
 

@@ -49,6 +49,7 @@ namespace ResupplyNetwork
         public bool Rush;
         public double RushCost;
         public string ReasonKey;   // 本地化键；Reason 只作英文兜底
+        public string OriginName;  // 这批货从哪来（坎巴拉 / 某殖民地）
     }
 
     /// <summary>单物资报价（调试热键与离线报告仍在使用）。</summary>
@@ -76,6 +77,7 @@ namespace ResupplyNetwork
         public bool Rush;
         public double RushCost;
         public string ReasonKey;
+        public string OriginName;
     }
 
     /// <summary>
@@ -195,6 +197,7 @@ namespace ResupplyNetwork
             q.Ok = m.Ok;
             q.Reason = m.Reason;
             q.ReasonKey = m.ReasonKey;
+            q.OriginName = m.OriginName;
             q.Resource = resource;
             q.Amount = requestedAmount;
             q.FreightRate = freightRate;

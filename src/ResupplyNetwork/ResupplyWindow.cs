@@ -483,6 +483,7 @@ namespace ResupplyNetwork
                 return;
             }
 
+            GUILayout.Label(Loc.T("#LOC_RN_Line_Origin", q.OriginName ?? string.Empty, q.ZoneName));
             GUILayout.Label(Loc.T("#LOC_RN_Line_Mass", q.TotalMass.ToString("N3"), q.Trips,
                                   q.ZoneName, q.FreightRate.ToString("N0")));
             GUILayout.Label(Loc.T("#LOC_RN_Line_Cost", q.MaterialCost.ToString("N0"),

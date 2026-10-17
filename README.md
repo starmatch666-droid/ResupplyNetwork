@@ -18,6 +18,9 @@ Think commercial resupply flights to a station.
 - **Any resource** - prices and densities are read from the game's own
   `PartResourceDefinition` data, so modded resources work automatically.
 - **Rush orders** - pay a multiplier to cut the lead time.
+- **Colony supply origins** - if you have a working colony on the target's body,
+  deliveries to that body come from the colony: local launch cost and hours, instead
+  of interplanetary shipping from Kerbin.
 - **Scarcity multipliers and an exclusion list** for resources you do not want to sell.
 - **English and Chinese UI** - everything follows your game language.
 
@@ -77,6 +80,36 @@ Three sections under the game's difficulty options:
   is lost, rush cost/time multipliers, and the CommNet link requirement.
 - **Resupply · Scheduling** - default threshold, top-up target, cadence and per-order
   budget for new rules.
+- **Resupply · Colonies** - enable colony supply, the minimum crew a base needs, and a
+  freight multiplier.
+
+## Colony supply
+
+When a vessel is in the SOI of a body that also has a qualifying colony, the quote
+switches its origin from Kerbin to that colony. The quote window shows it as
+`Origin <colony> (surface) → <destination>`.
+
+A base qualifies when it is **landed or splashed** on that body, has at least the
+configured **minimum crew** (3 by default), and carries at least one
+**resource converter, harvester or logistics module**. Module names are matched
+generically (`*Converter*`, `*Harvester*`, `*LogisticsConsumer*`), so it works with
+stock converters, USI parts and PlanetaryBaseInc bases without depending on any one
+colony mod.
+
+Freight is then estimated as a local launch:
+
+```
+colony rate = K_mass x (local ascent dv / Kerbin ascent dv) x premium x factor
+```
+
+with the ascent delta-v approximated from the body's gravity and atmosphere. As a
+rough guide, Duna works out to about 40% of the Kerbin rate and Minmus to about 6%.
+Lead time drops to a local launch (6 hours per trip) instead of a transfer from
+Kerbin. Material prices are unchanged - the colony "sells" the goods at the normal
+market price.
+
+Colony supply only applies **within the same body's SOI**. A colony does not ship to
+other planets; that still comes from Kerbin.
 
 The `Config/ResupplySettings.cfg` file holds the same values as *defaults* (used for
 new saves and by the offline pricing tool) plus the list-shaped settings that do not
@@ -135,6 +168,7 @@ MIT
 - **成本由真实轨道数据算出** - 运费随目的地 Δv 与转移时间变化，自动适配任意行星包
 - **支持全部资源** - 直接从游戏自身的 `PartResourceDefinition` 读价格与密度，mod 资源自动生效
 - **加急订单 / 稀缺溢价 / 排除表**
+- **殖民地补给** - 目标天体上若有运作中的殖民地，补给改由该殖民地本地发货，只需本地发射的费用和几小时，而不是从坎巴拉跨越星际运来
 - **界面双语**，跟着游戏语言走
 
 ## 依赖
@@ -181,6 +215,29 @@ MIT
   + 实时参考报价
 - **补给网 · 退款与加急** - 取消退款、舰船损毁退款、加急费用/时间倍率、通信链路要求
 - **补给网 · 定时补给** - 新规则的默认阈值、补充目标、班期、单笔预算
+- **补给网 · 殖民地** - 是否启用、殖民地最少乘员、运费系数
+
+## 殖民地补给
+
+当目标舰船所在的天体上存在合格殖民地时，报价的来源会从坎巴拉切换成该殖民地，
+窗口里显示为 `来源 <殖民地>（地表） → <目的地>`。
+
+殖民地的判定条件是：**停在表面**（陆地或海上）、**乘员不少于设定值**（默认 3）、
+并且**至少有一个转换器 / 采掘器 / 后勤模块**。模块名按通用特征匹配
+（`*Converter*`、`*Harvester*`、`*LogisticsConsumer*`），所以原版转换器、USI
+和 PlanetaryBaseInc 的基地都能识别，不绑定任何一个殖民地 mod。
+
+运费按"本地发射"估算：
+
+```
+殖民地运费率 = K_mass × (当地入轨 Δv / 坎巴拉入轨 Δv) × 便利溢价 × 系数
+```
+
+入轨 Δv 由天体的重力和大气粗略估算。参考值：Duna 约为坎巴拉的四成，Minmus 约为 6%。
+交付时间缩短为本地发射（每趟 6 小时），不再是从坎巴拉出发的星际航程。
+物资价格不变——殖民地按正常市价"出售"这些物资。
+
+殖民地补给**只在同一天体的 SOI 内生效**；跨行星的补给仍然来自坎巴拉。
 
 `Config/ResupplySettings.cfg` 里存的是同名参数的**默认值**（新存档用，离线定价工具也读它），
 外加放不进那个页面的列表类配置：稀缺溢价、排除表、目的地覆盖。**难度页里的值优先于文件。**
