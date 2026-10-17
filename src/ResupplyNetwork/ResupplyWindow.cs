@@ -542,8 +542,11 @@ namespace ResupplyNetwork
                 string name = string.IsNullOrEmpty(d.VesselName) ? "?" : d.VesselName;
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(Loc.T("#LOC_RN_Line_Pending", name, d.KindCount,
-                                      CostCore.FormatDuration(remain < 0 ? 0.0 : remain)), GUILayout.Width(430f));
+                string origin = string.IsNullOrEmpty(d.OriginName)
+                    ? Loc.T("#LOC_RN_Origin_Home")
+                    : d.OriginName;
+                GUILayout.Label(Loc.T("#LOC_RN_Line_Pending", name, d.KindCount, origin,
+                                      CostCore.FormatDuration(remain < 0 ? 0.0 : remain)), GUILayout.Width(560f));
                 if (GUILayout.Button(Loc.T("#LOC_RN_Detail"), GUILayout.Width(70f)))
                 {
                     var sb = new System.Text.StringBuilder();
@@ -810,15 +813,7 @@ namespace ResupplyNetwork
 
         private static string BodyLabel(CelestialBody body)
         {
-            if (body == null) return "?";
-            string name = body.displayName;
-            if (string.IsNullOrEmpty(name)) name = body.bodyName;
-            // KSP 的天体显示名带转义后缀（字典里是 "Minmus^N"），直接把原串画出来会多出 ^N。
-            int caret = name.IndexOf('^');
-            if (caret >= 0) name = name.Substring(0, caret);
-            name = name.Trim();
-            if (name.Length == 0) name = body.bodyName;
-            return name;
+            return ColonyOrigin.BodyName(body);
         }
 
         private static string VesselTypeLabel(VesselType t)

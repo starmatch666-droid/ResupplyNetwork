@@ -39,7 +39,7 @@ namespace ResupplyNetwork
                 rate = ColonyOrigin.FreightRate(colony.Body, s);
                 transfer = ColonyOrigin.LocalTransferTime;
                 origin = Loc.T("#LOC_RN_ColonyName", colony.Vessel.vesselName,
-                               colony.Body.displayName);
+                               ColonyOrigin.BodyName(colony.Body));
             }
 
             var items = new List<QuoteItem>(cart.Count);

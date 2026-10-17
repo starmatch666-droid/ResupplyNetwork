@@ -92,6 +92,18 @@ namespace ResupplyNetwork
             catch { return 0; }
         }
 
+        /// <summary>天体显示名。KSP 的 displayName 带 ^N 之类的转义后缀，要剥掉。</summary>
+        public static string BodyName(CelestialBody b)
+        {
+            if (b == null) return "?";
+            string name = b.displayName;
+            if (string.IsNullOrEmpty(name)) name = b.bodyName;
+            int caret = name.IndexOf('^');
+            if (caret >= 0) name = name.Substring(0, caret);
+            name = name.Trim();
+            return name.Length > 0 ? name : b.bodyName;
+        }
+
         /// <summary>有转换器 / 采掘器 / 后勤模块，才算是"能生产"的基地，而不是一顶帐篷。</summary>
         private static bool HasProduction(Vessel v)
         {

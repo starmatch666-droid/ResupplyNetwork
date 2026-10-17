@@ -20,6 +20,7 @@ namespace ResupplyNetwork
         public double OrderedUT;
         public double Paid;
         public string ZoneName;
+        public string OriginName;
 
         public int KindCount { get { return Items.Count; } }
         public double TotalAmount
@@ -93,6 +94,7 @@ namespace ResupplyNetwork
                 c.AddValue("orderedUT", d.OrderedUT.ToString("R"));
                 c.AddValue("paid", d.Paid.ToString("R"));
                 c.AddValue("zone", d.ZoneName ?? string.Empty);
+                c.AddValue("origin", d.OriginName ?? string.Empty);
                 for (int j = 0; j < d.Items.Count; j++)
                 {
                     ConfigNode item = c.AddNode("ITEM");
@@ -183,6 +185,7 @@ namespace ResupplyNetwork
             r.OrderedUT = ParseD(c.GetValue("orderedUT"), 0.0);
             r.Paid = ParseD(c.GetValue("paid"), 0.0);
             r.ZoneName = c.GetValue("zone") ?? string.Empty;
+            r.OriginName = c.GetValue("origin") ?? string.Empty;
 
             var nodes = c.GetNodes("ITEM");
             for (int i = 0; i < nodes.Length; i++)
@@ -245,6 +248,7 @@ namespace ResupplyNetwork
             d.DueUT = d.OrderedUT + q.LeadTime;
             d.Paid = q.Total;
             d.ZoneName = q.ZoneName;
+            d.OriginName = q.OriginName;
             for (int i = 0; i < q.Lines.Count; i++)
             {
                 d.Items.Add(new DeliveryItem { Resource = q.Lines[i].Resource, Amount = q.Lines[i].Amount });
