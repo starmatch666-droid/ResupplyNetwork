@@ -61,13 +61,13 @@ lead     = base handling time + trips x transfer time
 rate = base rate x (1 + dv / dv_ref) x (1 + time markup x years) x premium
 ```
 
-Every coefficient is adjustable (see below). The defaults are anchored so the
-service is never cheaper than launching the fuel yourself: the base rate equals the
-cost of lifting one tonne to LKO, and the transfer time is a real Hohmann estimate
-from the target's orbit.
+Every coefficient is adjustable (see below). In stock KSP the defaults are anchored
+to the cost of lifting one tonne to LKO, and the transfer time is a real Hohmann
+estimate from the target's orbit. RSS applies a separate `rssFreightMultiplier`;
+its default of `0.125` gives 500 funds/tonne at the default `K_mass = 4000`.
 
 As a reference, at default settings, filling a 2.5 m Jumbo-64 at 250 km costs about
-**132,700 funds** and takes about **2.3 Kerbin days**. The same line is shown live on
+**20,500 funds** and takes about **2.3 Kerbin days**. The same line is shown live on
 the difficulty page so you can see what a change does before you commit to it.
 
 ## Difficulty options
@@ -135,8 +135,8 @@ funds per gram, and a x20 multiplier makes that 2,000,000 funds per gram.
 
 ## Notes and limits
 
-- Delivery is abstract - no physical tanker is spawned. The pricing is built so the
-  service never becomes cheaper than launching the fuel yourself.
+- Delivery is abstract - no physical tanker is spawned. Stock pricing is anchored to
+  launch cost; RSS uses its own multiplier for practical career pacing.
 - Orders are charged when placed; cancelling refunds a configurable fraction.
 - The docking-port requirement was **dropped by design**: checking ports on unloaded
   vessels would mean depending on save-file snapshot fields (`state`, `dockUId`),
@@ -166,6 +166,7 @@ MIT
 - **定时补给** - 每 N 天检查一次余量，低于阈值才发船，补到目标水位。规则可作用于单艘舰船、
   同类型全部舰船，或同一天体上的全部舰船
 - **成本由真实轨道数据算出** - 运费随目的地 Δv 与转移时间变化，自动适配任意行星包
+- **RSS 适配** - 正确显示地球名称，并为 RSS 月球提供独立定价；RSS 基础运费可单独缩放
 - **支持全部资源** - 直接从游戏自身的 `PartResourceDefinition` 读价格与密度，mod 资源自动生效
 - **加急订单 / 稀缺溢价 / 排除表**
 - **殖民地补给** - 目标天体上若有运作中的殖民地，补给改由该殖民地本地发货，只需本地发射的费用和几小时，而不是从坎巴拉跨越星际运来
@@ -201,11 +202,12 @@ MIT
 费率 = 基础运费 × (1 + Δv/Δv参照) × (1 + 时间加价 × 年数) × 便利溢价
 ```
 
-默认值刻意锚定在"**不比你自己发射更便宜**"：基础运费等于把 1 吨送上 LKO 的成本，
-转移时间是按目标轨道算出来的真实霍曼转移。
+原版默认值锚定在把 1 吨送上 LKO 的成本，转移时间按目标轨道计算真实霍曼转移。
+RSS 另有 `rssFreightMultiplier`：默认 `0.125`，在默认 `K_mass = 4000` 下相当于
+地球轨道 **500 资金/吨**。
 
 参考：默认参数下，在 250 km 轨道加满一个 2.5m 最大油罐（Jumbo-64）约
-**132,700 资金 / 2.3 坎巴拉日**。这一行会实时显示在难度页上，拖滑块就能看到影响。
+**20,500 资金 / 2.3 坎巴拉日**。这一行会实时显示在难度页上，拖滑块就能看到影响。
 
 ## 难度设置页
 
@@ -258,13 +260,24 @@ Far Future Technologies、CryoEngines/CryoTanks、USI/MKS、Near Future、Kerbal
 
 ## 已知边界
 
-- 交付是抽象的，不生成实体补给船；定价保证不比你自己发射便宜
+- 交付是抽象的，不生成实体补给船；原版定价锚定发射成本，RSS 使用独立倍率控制节奏
 - 下单即扣款，取消按可配置比例退款
 - **对接口要求已按设计取消**（检查未加载舰船的对接口要依赖存档快照字段，太脆弱），
   改用可选的通信链路要求
 - **货舱**（KSP 1.12 物品栏部件）里的资源容器不参与补给，也不计入余量
 - 不搬运船员、科学数据、货物零件
 - 班期比续航还长时可能在到货前断货，检测到会往日志写警告
+
+## RealSolarSystem
+
+RSS 在不同加载阶段可能把地球表示为 `Kerbin` 或 `Earth`。补给网会读取母星半径和
+RSS 本地化名称，因此界面显示 `Earth` / `地球`，而不是 `Kerbin`。月球使用 RSS 的
+`Moon` 天体，并在
+`Config/ResupplySettings.cfg` 中有独立的轨道与地表覆盖项。
+
+`rssFreightMultiplier` 只在检测到 RSS 时生效，默认是 `0.125`。按默认
+`K_mass = 4000` 计算，地球轨道有效运费为 `500 资金/吨`。它不会改变原版 Kerbin
+存档的价格。要调整 RSS 整体补给成本，修改这个值，或在难度设置里调整 `K_mass`。
 
 ## 授权
 

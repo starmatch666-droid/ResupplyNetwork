@@ -14,6 +14,7 @@ namespace ResupplyNetwork
     {
         private bool _buttonCreated;
         private float _lastParamsApply;
+        private bool _loggedBodyProfile;
 
         private void Awake()
         {
@@ -35,6 +36,16 @@ namespace ResupplyNetwork
                 _lastParamsApply = Time.realtimeSinceStartup;
                 ResupplySettings.RefreshTimeUnits();
                 if (HighLogic.CurrentGame != null) ResupplySettings.ApplyGameParams();
+            }
+
+            if (!_loggedBodyProfile && BodyIdentity.Home != null)
+            {
+                _loggedBodyProfile = true;
+                Debug.Log("[ResupplyNetwork] 天体环境: " + BodyIdentity.HomeDisplayName
+                          + " | body=" + BodyIdentity.Home.bodyName
+                          + " radius=" + BodyIdentity.Home.Radius.ToString("N0")
+                          + " | RSS=" + BodyIdentity.IsRss
+                          + " | freight multiplier=" + ResupplySettings.Instance.RssFreightMultiplier);
             }
 
             // 交付队列除了自身 Update，也由这个常驻对象驱动一次（幂等），

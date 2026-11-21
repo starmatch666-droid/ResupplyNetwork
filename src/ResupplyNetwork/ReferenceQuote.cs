@@ -14,7 +14,6 @@ namespace ResupplyNetwork
     {
         private const double RefLiquidFuel = 2880.0;
         private const double RefOxidizer = 3520.0;
-        private const string RefBody = "Kerbin";
         private const string RefSituation = "Orbiting";
         private const double FallbackTransferTime = 21600.0;
 
@@ -32,10 +31,11 @@ namespace ResupplyNetwork
                 double transfer = FallbackTransferTime;
                 double multiplier = 1.0;
                 double hardRate = -1.0;
+                string refBody = BodyIdentity.Home != null ? BodyIdentity.Home.bodyName : "Kerbin";
                 for (int i = 0; i < s.Zones.Count; i++)
                 {
                     var z = s.Zones[i];
-                    if (!string.Equals(z.Body, RefBody, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!string.Equals(z.Body, refBody, StringComparison.OrdinalIgnoreCase)) continue;
                     if (!string.Equals(z.Situation, RefSituation, StringComparison.OrdinalIgnoreCase)) continue;
                     dv = z.Dv;
                     transfer = z.TransferTime;
@@ -46,7 +46,7 @@ namespace ResupplyNetwork
 
                 double rate = hardRate >= 0.0
                     ? hardRate
-                    : CostCore.FreightRate(s.KMass, dv, s.DvRef, s.KTime, transfer, s.KPremium) * multiplier;
+                    : ZoneCalculator.RateFrom(dv, transfer) * multiplier;
 
                 MultiQuote q = CostCore.QuoteMulti(
                     items, rate, transfer, s.BTrip, s.STrip, s.SMin, s.TBase);

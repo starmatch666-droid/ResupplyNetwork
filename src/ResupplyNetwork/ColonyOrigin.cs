@@ -169,7 +169,9 @@ namespace ResupplyNetwork
             double ratio = AscentDv(body) / reference;
             if (ratio < 0.02) ratio = 0.02;   // 下限，别让低重力卫星变成免费
 
-            return s.KMass * ratio * s.KPremium * s.ColonyFreightFactor;
+            double rate = s.KMass * ratio * s.KPremium * s.ColonyFreightFactor;
+            if (BodyIdentity.IsRss) rate *= s.RssFreightMultiplier;
+            return rate;
         }
     }
 }

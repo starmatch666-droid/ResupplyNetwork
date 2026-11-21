@@ -56,6 +56,7 @@ namespace ResupplyNetwork
         public double MinDensity = 0.0001;
         public double MinUnitPrice = 0.01;
         public bool AutoComputeZones = true;
+        public double RssFreightMultiplier = 0.125;
 
         public readonly Dictionary<string, double> UnitPriceOverride = new Dictionary<string, double>();
         public readonly Dictionary<string, double> Scarcity = new Dictionary<string, double>();
@@ -220,6 +221,7 @@ namespace ResupplyNetwork
 
             string ac = n.GetValue("autoComputeZones");
             if (!string.IsNullOrEmpty(ac)) AutoComputeZones = ac.Trim().ToLowerInvariant() != "false";
+            RssFreightMultiplier = GetD(n, "rssFreightMultiplier", RssFreightMultiplier);
 
             foreach (var c in n.GetNodes("UNIT_PRICE_OVERRIDE"))
             {

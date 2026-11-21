@@ -30,7 +30,7 @@ namespace ResupplyNetwork
                     !string.Equals(z.Situation, sit, StringComparison.OrdinalIgnoreCase)) continue;
 
                 var dz = new DestinationZone();
-                dz.Name = bodyName + "/" + sit;
+                dz.Name = BodyIdentity.DisplayName(body) + "/" + sit;
                 dz.DvPark = z.Dv;
                 dz.TransferTime = z.TransferTime;
                 // 写死 rate 的优先；否则按公式算，再乘上该目的地的倍率（默认 1.0）。
@@ -42,17 +42,19 @@ namespace ResupplyNetwork
                 return dz;
             }
 
-            return Compute(body);
+            return Compute(body, vessel != null ? vessel.situation : Vessel.Situations.ORBITING);
         }
 
         public static double RateFrom(double dvPark, double transferTime)
         {
             var s = ResupplySettings.Instance;
-            return CostCore.FreightRate(s.KMass, dvPark, s.DvRef, s.KTime, transferTime, s.KPremium);
+            double rate = CostCore.FreightRate(s.KMass, dvPark, s.DvRef, s.KTime, transferTime, s.KPremium);
+            if (BodyIdentity.IsRss) rate *= s.RssFreightMultiplier;
+            return rate;
         }
 
         /// <summary>霍曼转移近似。对任何行星包都成立，不需要手工维护表。</summary>
-        private static DestinationZone Compute(CelestialBody body)
+        private static DestinationZone Compute(CelestialBody body, Vessel.Situations situation)
         {
             var s = ResupplySettings.Instance;
             var dz = new DestinationZone();
@@ -68,7 +70,7 @@ namespace ResupplyNetwork
             CelestialBody home = Planetarium.fetch != null ? Planetarium.fetch.Home : FlightGlobals.GetHomeBody();
             if (body == home)
             {
-                dz.Name = body.bodyName;
+                dz.Name = BodyIdentity.DisplayName(body);
                 dz.TransferTime = 6.0 * 3600.0;
                 dz.DvPark = 0.0;
                 dz.FreightRate = RateFrom(0.0, dz.TransferTime);
@@ -76,30 +78,73 @@ namespace ResupplyNetwork
             }
 
             CelestialBody parent = body.orbit != null ? body.orbit.referenceBody : null;
-            bool isMoon = parent != null && parent != home &&
-                          !(parent == (Planetarium.fetch != null ? Planetarium.fetch.Sun : null) ||
-                            (bool)(home != null && parent != null && parent == home.orbit.referenceBody));
+            CelestialBody sun = Planetarium.fetch != null ? Planetarium.fetch.Sun : null;
+            bool isMoon = parent != null && parent != sun;
 
             double dv;
             double time;
 
             if (isMoon)
             {
-                DestinationZone parentZone = Compute(parent);
-                dv = parentZone.DvPark + 900.0;
-                time = parentZone.TransferTime + 2.0 * CostCore.KerbinDay;
-                dz.Name = body.bodyName + " (" + parent.bodyName + " 卫星)";
+                DestinationZone parentZone = Compute(parent, Vessel.Situations.ORBITING);
+                double moonDv;
+                double moonTime;
+                MoonTransfer(parent, body, out moonDv, out moonTime);
+                dv = parentZone.DvPark + moonDv;
+                time = parentZone.TransferTime + moonTime;
+                dz.Name = BodyIdentity.DisplayName(body) + " (" +
+                          BodyIdentity.DisplayName(parent) + " 卫星)";
             }
             else
             {
                 HohmannFromHome(body, home, out dv, out time);
-                dz.Name = body.bodyName;
+                dz.Name = BodyIdentity.DisplayName(body);
+            }
+
+            if (situation == Vessel.Situations.LANDED || situation == Vessel.Situations.SPLASHED)
+            {
+                dv += ColonyOrigin.AscentDv(body);
+                time += CostCore.KerbinDay;
             }
 
             dz.DvPark = dv;
             dz.TransferTime = time;
             dz.FreightRate = RateFrom(dv, time);
             return dz;
+        }
+
+        /// <summary>
+        /// Approximate a transfer from a low orbit around the moon's parent body
+        /// to a low orbit around the moon. The capture term is deliberately
+        /// conservative; planet packs vary too much for a single exact value.
+        /// </summary>
+        private static void MoonTransfer(CelestialBody parent, CelestialBody moon,
+                                         out double dv, out double time)
+        {
+            dv = 900.0;
+            time = 2.0 * CostCore.KerbinDay;
+
+            if (parent == null || moon == null || moon.orbit == null) return;
+            if (parent.gravParameter <= 0.0 || moon.gravParameter <= 0.0) return;
+
+            double parkingAltitude = Math.Max(60000.0, parent.Radius * 0.03);
+            double moonAltitude = Math.Max(25000.0, moon.Radius * 0.02);
+            double rPark = parent.Radius + parkingAltitude;
+            double rMoon = moon.orbit.semiMajorAxis;
+            double rMoonPark = moon.Radius + moonAltitude;
+            if (rPark <= 0.0 || rMoon <= rPark || rMoonPark <= 0.0) return;
+
+            double a = 0.5 * (rPark + rMoon);
+            double vPark = Math.Sqrt(parent.gravParameter / rPark);
+            double vTransfer = Math.Sqrt(parent.gravParameter * (2.0 / rPark - 1.0 / a));
+            double vApo = Math.Sqrt(parent.gravParameter * (2.0 / rMoon - 1.0 / a));
+            double vMoon = Math.Sqrt(parent.gravParameter / rMoon);
+            double relativeArrival = Math.Abs(vMoon - vApo);
+            double vLowMoon = Math.Sqrt(moon.gravParameter / rMoonPark);
+            double capture = Math.Max(vLowMoon - relativeArrival, vLowMoon * 0.45);
+
+            dv = Math.Max(0.0, vTransfer - vPark) + capture;
+            time = Math.PI * Math.Sqrt(a * a * a / parent.gravParameter);
         }
 
         /// <summary>从母星轨道到目标行星轨道的霍曼近似（绕恒星）。</summary>

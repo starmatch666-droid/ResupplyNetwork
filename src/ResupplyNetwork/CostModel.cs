@@ -33,7 +33,7 @@ namespace ResupplyNetwork
             SupplyColony colony = ColonyOrigin.FindFor(vessel);
             double rate = zone.FreightRate;
             double transfer = zone.TransferTime;
-            string origin = Loc.T("#LOC_RN_Origin_Home");
+            string origin = BodyIdentity.HomeDisplayName;
             if (colony != null)
             {
                 rate = ColonyOrigin.FreightRate(colony.Body, s);

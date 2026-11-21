@@ -71,6 +71,7 @@ namespace ResupplyNetwork.Tools
             double tBase = Num(conf.Get("T_base"), 7200);
             double minDensity = Num(conf.Get("minDensity"), 0.0001);
             double minUnitPrice = Num(conf.Get("minUnitPrice"), 0.01);
+            double rssFreightMultiplier = Num(conf.Get("rssFreightMultiplier"), 0.125);
 
             var overrides = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in conf.All("UNIT_PRICE_OVERRIDE")) overrides[c.Get("name") ?? ""] = Num(c.Get("price"), 0);
@@ -89,6 +90,7 @@ namespace ResupplyNetwork.Tools
             Console.WriteLine("=== 配置解析结果（" + cfgPath + "）===");
             Console.WriteLine("K_mass=" + kMass + "  dv_ref=" + dvRef + "  K_time=" + kTime + "  K_premium=" + kPremium);
             Console.WriteLine("B_trip=" + bTrip + "  S_trip=" + sTrip + "  S_min=" + sMin + "  T_base=" + tBase);
+            Console.WriteLine("RSS 运费倍率=" + rssFreightMultiplier);
             Console.WriteLine("单位价覆盖=" + overrides.Count + "  稀缺溢价=" + scarcity.Count
                               + "  排除=" + excluded.Count + "  目的地覆盖=" + zones.Count);
             Console.WriteLine();
@@ -150,24 +152,35 @@ namespace ResupplyNetwork.Tools
             }
             Console.WriteLine();
 
+            Console.WriteLine("=== RSS 报价基准 ===");
+            double rssEarthOrbitRate = 4000.0 * rssFreightMultiplier;
+            double rssMoonOrbitRate = CostCore.FreightRate(
+                kMass, 4000.0, dvRef, kTime, 259200.0, kPremium) * rssFreightMultiplier;
+            double rssMoonSurfaceRate = CostCore.FreightRate(
+                kMass, 5700.0, dvRef, kTime, 324000.0, kPremium) * rssFreightMultiplier;
+            Console.WriteLine("Earth LEO:  " + rssEarthOrbitRate.ToString("N0") + " /t");
+            Console.WriteLine("Moon orbit: " + rssMoonOrbitRate.ToString("N0") + " /t");
+            Console.WriteLine("Moon land:  " + rssMoonSurfaceRate.ToString("N0") + " /t");
+            Console.WriteLine();
+
             // ---- 4. 用 CostCore 跑几个实例报价 ----
-            Console.WriteLine("=== 实例报价（CostCore，与游戏内同一份代码）===");
-            Sample(defs, "LiquidFuel", 2880, 4000, 21600, kMass, dvRef, kTime, kPremium, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity);
-            Sample(defs, "LqdHydrogen", 70572, 9100, 47520, kMass, dvRef, kTime, kPremium, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity);
-            Sample(defs, "Supplies", 10000, 42000, 17280000, kMass, dvRef, kTime, kPremium, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity);
-            Sample(defs, "ElectricCharge", 5000, 4000, 21600, kMass, dvRef, kTime, kPremium, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity);
+            Console.WriteLine("=== 实例报价（RSS 有效倍率，与游戏内同一份代码）===");
+            Sample(defs, "LiquidFuel", 2880, 4000 * rssFreightMultiplier, 21600, kMass, dvRef, kTime, kPremium, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity);
+            Sample(defs, "LqdHydrogen", 70572, 9100 * rssFreightMultiplier, 47520, kMass, dvRef, kTime, kPremium, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity);
+            Sample(defs, "Supplies", 10000, 42000 * rssFreightMultiplier, 17280000, kMass, dvRef, kTime, kPremium, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity);
+            Sample(defs, "ElectricCharge", 5000, 4000 * rssFreightMultiplier, 21600, kMass, dvRef, kTime, kPremium, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity);
             Console.WriteLine();
             SampleMulti(defs, new (string, double)[]
             {
                 ("LiquidFuel", 2880),
                 ("Oxidizer", 3520),
-            }, 4000, 21600, kMass, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity, "LKO 加满一罐 Jumbo-64 等量");
+            }, 4000 * rssFreightMultiplier, 21600, kMass, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity, "LKO 加满一罐 Jumbo-64 等量");
             SampleMulti(defs, new (string, double)[]
             {
                 ("Supplies", 10000),
                 ("Water", 2000),
                 ("MaterialKits", 500),
-            }, 42000, 17280000, kMass, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity, "Jool 站补 补给品+水+材料");
+            }, 42000 * rssFreightMultiplier, 17280000, kMass, bTrip, sTrip, sMin, tBase, minDensity, minUnitPrice, overrides, scarcity, "Jool 站补 补给品+水+材料");
             Console.WriteLine();
 
             // ---- 5. 反物质专项核对 ----
